@@ -10,13 +10,14 @@ import {
   ChevronRight, 
   DollarSign, 
   Clock, 
-  Trophy,
-  PieChart as PieIcon,
-  Search,
-  Filter,
-  X
+  Trophy, 
+  PieChart as PieIcon, 
+  Search, 
+  Filter, 
+  X 
 } from "lucide-react";
 import { useStore, Goal } from "@/lib/mock-data";
+import { formatNumber, formatDateMonthYear } from "@/lib/format";
 
 export default function GoalsPage() {
   const { goals, household, addGoal, contributeToGoal } = useStore();
@@ -27,7 +28,7 @@ export default function GoalsPage() {
     targetAmount: "",
     deadline: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
     timeframe: "MEDIUM" as Goal["timeframe"],
-    category: "Vacation",
+    category: "Vacaciones",
     priority: "MEDIUM" as Goal["priority"]
   });
 
@@ -54,7 +55,7 @@ export default function GoalsPage() {
       targetAmount: "",
       deadline: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
       timeframe: "MEDIUM",
-      category: "Vacation",
+      category: "Vacaciones",
       priority: "MEDIUM"
     });
   };
@@ -66,9 +67,17 @@ export default function GoalsPage() {
     setContribAmount("");
   };
 
-  const categories = ["Vacation", "Emergency Fund", "Home Purchase", "Vehicle", "Education", "Retirement", "General"];
-  const timeframes = ["SHORT", "MEDIUM", "LONG"];
-  const priorities = ["LOW", "MEDIUM", "HIGH"];
+  const categories = ["Vacaciones", "Fondo de Emergencia", "Compra de Vivienda", "Vehículo", "Educación", "Jubilación", "General"];
+  const timeframes = [
+    { label: "Corto Plazo", value: "SHORT" as const },
+    { label: "Mediano Plazo", value: "MEDIUM" as const },
+    { label: "Largo Plazo", value: "LONG" as const }
+  ];
+  const priorities = [
+    { label: "Baja", value: "LOW" as const },
+    { label: "Media", value: "MEDIUM" as const },
+    { label: "Alta", value: "HIGH" as const }
+  ];
 
   return (
     <div className="space-y-8 animate-fade-in pb-16">
@@ -95,6 +104,7 @@ export default function GoalsPage() {
         {goals.map((goal) => {
           const ratio = Math.min(100, (Number(goal.currentAmount) / Number(goal.targetAmount)) * 100);
           const isCompleted = ratio >= 100;
+          const timeframeText = goal.timeframe === "SHORT" ? "Corto Plazo" : goal.timeframe === "MEDIUM" ? "Mediano Plazo" : "Largo Plazo";
 
           return (
             <div key={goal.id} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 shadow-sm hover:shadow-md transition group relative overflow-hidden">
@@ -109,21 +119,21 @@ export default function GoalsPage() {
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <div className={`p-2.5 rounded-xl ${
-                    goal.priority === "HIGH" ? "bg-rose-50 text-rose-600" : 
-                    goal.priority === "MEDIUM" ? "bg-indigo-50 text-indigo-600" : 
-                    "bg-slate-50 text-slate-500"
-                  } dark:bg-zinc-800`}>
+                    goal.priority === "HIGH" ? "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400" : 
+                    goal.priority === "MEDIUM" ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400" : 
+                    "bg-slate-50 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400"
+                  }`}>
                     <Flag className="w-5 h-5" />
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-900 dark:text-white leading-tight">{goal.title}</h4>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500">{goal.category} • {goal.timeframe} {"Plazo"}</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500">{goal.category} • {timeframeText}</span>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs font-bold">
-                    <span className="text-slate-500">Progress</span>
+                    <span className="text-slate-500 dark:text-zinc-400">{"Progreso"}</span>
                     <span className="text-indigo-600 dark:text-indigo-400">{ratio.toFixed(1)}%</span>
                   </div>
                   <div className="w-full h-2.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
@@ -133,21 +143,21 @@ export default function GoalsPage() {
                     />
                   </div>
                   <div className="flex justify-between text-[11px] font-medium text-slate-400">
-                    <span>Saved: ${Number(goal.currentAmount).toLocaleString()}</span>
-                    <span>Target: ${Number(goal.targetAmount).toLocaleString()}</span>
+                    <span>{"Ahorrado"}: ${formatNumber(goal.currentAmount)}</span>
+                    <span>{"Objetivo"}: ${formatNumber(goal.targetAmount)}</span>
                   </div>
                 </div>
 
                 <div className="pt-4 flex items-center justify-between border-t border-slate-100 dark:border-zinc-800">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-tight">
-                    <Calendar className="w-3.5 h-3.5" /> {new Date(goal.deadline).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                    <Calendar className="w-3.5 h-3.5" /> {formatDateMonthYear(goal.deadline)}
                   </div>
                   {!isCompleted && (
                     <button 
                       onClick={() => setContribModal({ open: true, goalId: goal.id, title: goal.title })}
                       className="px-4 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all"
                     >
-                      {"Fondear Hito"}
+                      {"Aportar Fondos"}
                     </button>
                   )}
                 </div>
@@ -162,7 +172,7 @@ export default function GoalsPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full p-8 shadow-2xl animate-scale-up">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-slate-950 dark:text-white">Design New Goal</h3>
+              <h3 className="text-xl font-bold text-slate-950 dark:text-white">{"Diseñar Nueva Meta"}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-6 h-6" />
               </button>
@@ -174,7 +184,7 @@ export default function GoalsPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Dream House Downpayment"
+                  placeholder="ej. Inicial para Casa Propia"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
@@ -223,7 +233,7 @@ export default function GoalsPage() {
                     onChange={(e) => setFormData({ ...formData, timeframe: e.target.value as any })}
                     className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
                   >
-                    {timeframes.map(t => <option key={t} value={t}>{t}</option>)}
+                    {timeframes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
@@ -233,7 +243,7 @@ export default function GoalsPage() {
                     onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
                     className="w-full px-3 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
                   >
-                    {priorities.map(p => <option key={p} value={p}>{p}</option>)}
+                    {priorities.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
               </div>
@@ -256,7 +266,7 @@ export default function GoalsPage() {
             <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4">
               <DollarSign className="w-8 h-8" />
             </div>
-            <h3 className="text-xl font-bold text-slate-950 dark:text-white mb-2">{"Fondear Hito"}</h3>
+            <h3 className="text-xl font-bold text-slate-950 dark:text-white mb-2">{"Aportar a Meta"}</h3>
             <p className="text-sm text-slate-500 dark:text-zinc-400 mb-6 font-medium">{"Añadiendo fondos a"}: <span className="text-indigo-600 font-bold">{contribModal.title}</span></p>
             
             <form onSubmit={handleContribute} className="space-y-6">

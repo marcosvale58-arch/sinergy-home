@@ -23,22 +23,26 @@ export default function InventoryPage() {
   const { inventory, household, updateInventoryStock, addInventoryItem } = useStore();
   
   const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState<string>("All");
+  const [activeCategory, setActiveCategory] = useState<string>("Todos");
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Form
   const [formData, setFormData] = useState({
     name: "",
-    category: "Pantry" as InventoryItem["category"],
+    category: "Despensa" as InventoryItem["category"],
     minQuantity: "1",
-    unit: "units"
+    unit: "unidades"
   });
 
-  const categories = ["All", "Pantry", "Cleaning", "Toiletries", "Medicine"];
+  const categories = ["Todos", "Despensa", "Limpieza", "Higiene", "Medicina"];
 
   const filteredItems = inventory.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = activeCategory === "All" || item.category === activeCategory;
+    const matchesCategory = activeCategory === "Todos" || item.category === activeCategory || 
+      (activeCategory === "Despensa" && item.category === "Pantry") ||
+      (activeCategory === "Limpieza" && item.category === "Cleaning") ||
+      (activeCategory === "Higiene" && item.category === "Toiletries") ||
+      (activeCategory === "Medicina" && item.category === "Medicine");
     return matchesSearch && matchesCategory;
   });
 
@@ -53,7 +57,7 @@ export default function InventoryPage() {
       formData.unit
     );
     setIsModalOpen(false);
-    setFormData({ name: "", category: "Pantry", minQuantity: "1", unit: "units" });
+    setFormData({ name: "", category: "Despensa", minQuantity: "1", unit: "unidades" });
   };
 
   return (
@@ -69,7 +73,7 @@ export default function InventoryPage() {
         </div>
         
         <div className="flex items-center gap-3">
-          <button className="p-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition">
+          <button className="p-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition" title="Historial">
             <History className="w-5 h-5" />
           </button>
           <button 
@@ -105,6 +109,7 @@ export default function InventoryPage() {
                 <button 
                   onClick={() => updateInventoryStock(item.id, 1)}
                   className="p-1.5 bg-rose-50 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100 transition"
+                  title="Aumentar"
                 >
                   <Plus className="w-4 h-4" />
                 </button>
@@ -113,7 +118,7 @@ export default function InventoryPage() {
             {lowStockItems.length === 0 && (
               <div className="text-center py-8">
                 <Sparkles className="w-8 h-8 text-rose-300 dark:text-rose-800 mx-auto mb-2" />
-                <p className="text-xs font-bold text-rose-400 uppercase tracking-widest">Inventory fully stocked</p>
+                <p className="text-xs font-bold text-rose-400 uppercase tracking-widest">{"Inventario totalmente abastecido"}</p>
               </div>
             )}
           </div>
@@ -187,12 +192,14 @@ export default function InventoryPage() {
                     <button 
                       onClick={() => updateInventoryStock(item.id, -1)}
                       className="flex-1 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 hover:bg-rose-50 hover:text-rose-600 transition flex items-center justify-center"
+                      title="Disminuir"
                     >
                       <ArrowDown className="w-4 h-4" />
                     </button>
                     <button 
                       onClick={() => updateInventoryStock(item.id, 1)}
                       className="flex-1 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 hover:bg-emerald-50 hover:text-emerald-600 transition flex items-center justify-center"
+                      title="Aumentar"
                     >
                       <ArrowUp className="w-4 h-4" />
                     </button>
@@ -205,8 +212,8 @@ export default function InventoryPage() {
           {filteredItems.length === 0 && (
             <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-12 text-center">
               <PackageCheck className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-              <h4 className="font-bold text-slate-900 dark:text-white">No items found</h4>
-              <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">Try changing your filters or add a new supply.</p>
+              <h4 className="font-bold text-slate-900 dark:text-white">{"No se encontraron artículos"}</h4>
+              <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">{"Prueba cambiando los filtros o añade un nuevo suministro."}</p>
             </div>
           )}
 
@@ -218,7 +225,7 @@ export default function InventoryPage() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full p-8 shadow-2xl animate-scale-up">
-            <h3 className="text-xl font-bold text-slate-950 dark:text-white mb-6">New Household Supply</h3>
+            <h3 className="text-xl font-bold text-slate-950 dark:text-white mb-6">{"Nuevo Suministro del Hogar"}</h3>
             
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
@@ -226,7 +233,7 @@ export default function InventoryPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Dishwasher Pods"
+                  placeholder="ej. Cápsulas de Lavavajillas"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
@@ -241,10 +248,10 @@ export default function InventoryPage() {
                     onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
                   >
-                    <option value="Pantry">Pantry</option>
-                    <option value="Cleaning">Cleaning</option>
-                    <option value="Toiletries">Toiletries</option>
-                    <option value="Medicine">Medicine</option>
+                    <option value="Despensa">Despensa</option>
+                    <option value="Limpieza">Limpieza</option>
+                    <option value="Higiene">Higiene</option>
+                    <option value="Medicina">Medicina</option>
                   </select>
                 </div>
                 <div>
@@ -252,7 +259,7 @@ export default function InventoryPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. units, kg, packs"
+                    placeholder="ej. unidades, kg, paquetes"
                     value={formData.unit}
                     onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"

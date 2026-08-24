@@ -18,6 +18,7 @@ import {
   Download
 } from "lucide-react";
 import { useStore, Transaction } from "@/lib/mock-data";
+import { formatNumber, formatDate } from "@/lib/format";
 
 export default function TransactionsPage() {
   const { transactions, household, users, addTransaction, deleteTransaction } = useStore();
@@ -30,18 +31,19 @@ export default function TransactionsPage() {
   // Form State
   const [formData, setFormData] = useState({
     amount: "",
+    currency: household.baseCurrency,
     type: "EXPENSE" as "INCOME" | "EXPENSE" | "TRANSFER",
-    category: "Food",
+    category: "Alimentos",
     notes: "",
     date: new Date().toISOString().split('T')[0],
     isRecurring: false,
-    userId: "u-1"
+    userId: typeof window !== "undefined" ? (localStorage.getItem("sinergy_active_user_id") || "u-1") : "u-1"
   });
 
   // Filtered Data
   const filteredTransactions = transactions.filter(t => {
-    const matchesSearch = "Notas".toLowerCase().includes(search.toLowerCase()) || 
-                         "Categoría".toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = t.notes.toLowerCase().includes(search.toLowerCase()) || 
+                         t.category.toLowerCase().includes(search.toLowerCase());
     const matchesType = filterType === "ALL" || t.type === filterType;
     return matchesSearch && matchesType;
   });
@@ -50,11 +52,13 @@ export default function TransactionsPage() {
     e.preventDefault();
     if (!formData.amount) return;
 
+    const currentUserId = formData.userId || (typeof window !== "undefined" ? (localStorage.getItem("sinergy_active_user_id") || users[0]?.id || "u-1") : "u-1");
+
     addTransaction({
-      userId: formData.userId,
+      userId: currentUserId,
       type: formData.type,
-      amount: parseFloat(formData.amount),
-      currency: household.baseCurrency,
+      originalAmount: parseFloat(formData.amount),
+      originalCurrency: formData.currency,
       category: formData.category,
       date: new Date(formData.date).toISOString(),
       notes: formData.notes,
@@ -63,20 +67,27 @@ export default function TransactionsPage() {
 
     setFormData({
       amount: "",
+      currency: household.baseCurrency,
       type: "EXPENSE",
-      category: "Food",
+      category: "Alimentos",
       notes: "",
       date: new Date().toISOString().split('T')[0],
       isRecurring: false,
-      userId: "u-1"
+      userId: currentUserId
     });
     setIsModalOpen(false);
   };
 
   const categories = {
-    INCOME: ["Salary", "Bonus", "Consulting", "Investment", "Gift", "Other"],
-    EXPENSE: ["Housing", "Utilities", "Food", "Transport", "Health", "Education", "Entertainment", "Shopping", "Savings", "Other"]
+    INCOME: ["Salario", "Bono", "Consultoría", "Inversión", "Regalo", "Otros"],
+    EXPENSE: ["Vivienda", "Servicios", "Alimentos", "Transporte", "Salud", "Educación", "Entretenimiento", "Compras", "Ahorro", "Otros"]
   };
+
+  const filterOptions = [
+    { label: "TODAS", value: "ALL" as const },
+    { label: "INGRESOS", value: "INCOME" as const },
+    { label: "EGRESOS", value: "EXPENSE" as const },
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -89,7 +100,7 @@ export default function TransactionsPage() {
         </div>
         
         <div className="flex items-center gap-3">
-          <button className="p-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition">
+          <button className="p-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition" title="Exportar">
             <Download className="w-5 h-5" />
           </button>
           <button 
@@ -115,17 +126,17 @@ export default function TransactionsPage() {
         </div>
         
         <div className="flex items-center bg-slate-50 dark:bg-zinc-800 p-1 rounded-xl border border-slate-200 dark:border-zinc-700 w-full md:w-auto">
-          {(["ALL", "INCOME", "EXPENSE"] as const).map((type) => (
+          {filterOptions.map((opt) => (
             <button
-              key={type}
-              onClick={() => setFilterType(type)}
+              key={opt.value}
+              onClick={() => setFilterType(opt.value)}
               className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                filterType === type 
+                filterType === opt.value 
                   ? "bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-400 shadow-sm" 
                   : "text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200"
               }`}
             >
-              {type}
+              {opt.label}
             </button>
           ))}
         </div>
@@ -161,7 +172,7 @@ export default function TransactionsPage() {
                         <p className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{tx.notes}</p>
                         {tx.isRecurring && (
                           <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
-                            <Repeat className="w-3 h-3" /> {"Recurrente"} {tx.recurrenceInterval}
+                            <Repeat className="w-3 h-3" /> {"Recurrente"} {tx.recurrenceInterval === "monthly" ? "Mensual" : tx.recurrenceInterval === "weekly" ? "Semanal" : "Anual"}
                           </div>
                         )}
                       </div>
@@ -175,27 +186,28 @@ export default function TransactionsPage() {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-                        {(users.find(u => u.id === tx.userId)?.name || "User").charAt(0)}
+                        {(users.find(u => u.id === tx.userId)?.name || "Usuario").charAt(0)}
                       </div>
                       <span className="text-xs font-medium text-slate-600 dark:text-zinc-300">
-                        {users.find(u => u.id === tx.userId)?.name}
+                        {users.find(u => u.id === tx.userId)?.name || "Usuario"}
                       </span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-xs font-medium text-slate-500 dark:text-zinc-400">
-                      {new Date(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {formatDate(tx.date, { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                   </td>
                   <td className={`px-6 py-4 text-right font-bold text-sm ${
                     tx.type === "INCOME" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-white"
                   }`}>
-                    {tx.type === "INCOME" ? "+" : "-"}${tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {tx.type === "INCOME" ? "+" : "-"}${formatNumber(tx.amount, { minimumFractionDigits: 2 })}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button 
                       onClick={() => deleteTransaction(tx.id)}
                       className="p-1.5 text-slate-400 hover:text-rose-500 transition opacity-0 group-hover:opacity-100"
+                      title="Eliminar"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -215,7 +227,7 @@ export default function TransactionsPage() {
           )}
         </div>
         
-        {/* Pagination placeholder */}
+        {/* Pagination */}
         <div className="bg-slate-50/50 dark:bg-zinc-800/30 px-6 py-4 flex items-center justify-between border-t border-slate-100 dark:border-zinc-800">
           <p className="text-xs font-medium text-slate-500 dark:text-zinc-400">
             {"Mostrando"} <span className="text-slate-900 dark:text-zinc-200">{filteredTransactions.length}</span> {"de"} {transactions.length} {"entradas"}
@@ -261,26 +273,38 @@ export default function TransactionsPage() {
                         : "border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800"
                     }`}
                   >
-                    {t}
+                    {t === "EXPENSE" ? "EGRESO / GASTO" : "INGRESO"}
                   </button>
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">{"Monto"}</label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
                     <input
                       type="number"
                       step="0.01"
                       required
                       value={formData.amount}
                       onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                      className="w-full pl-8 pr-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
+                      className="w-full pl-4 pr-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-bold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
                       placeholder="0.00"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">{"Moneda"}</label>
+                  <select
+                    value={formData.currency}
+                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="VES">VES (Bs.)</option>
+                  </select>
                 </div>
 
                 <div>
@@ -302,7 +326,7 @@ export default function TransactionsPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Weekly family dinner"
+                  placeholder="ej. Cena familiar semanal"
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
@@ -349,7 +373,7 @@ export default function TransactionsPage() {
                 type="submit"
                 className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-base hover:bg-indigo-500 shadow-xl shadow-indigo-600/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
               >
-                {"Registrar"} {formData.type}
+                {"Registrar"} {formData.type === "INCOME" ? "Ingreso" : "Egreso"}
               </button>
             </form>
           </div>

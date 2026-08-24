@@ -1,5 +1,17 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { convertToBase } from "@/lib/currency";
+import { getHouseholdFullState, getHouseholdFullStateForUser } from "@/actions/dashboard";
+import { createTransaction as serverCreateTransaction, deleteTransaction as serverDeleteTransaction } from "@/actions/transactions";
+import { updateDistributionRule as serverUpdateRule } from "@/actions/distribution";
+import { createInvestment as serverCreateInvestment, updateInvestmentValue as serverUpdateInvestmentValue } from "@/actions/investments";
+import { createInventoryItem as serverCreateInventoryItem, updateInventoryStock as serverUpdateInventoryStock } from "@/actions/inventory";
+import { createGoal as serverCreateGoal, contributeToGoal as serverContributeToGoal } from "@/actions/goals";
+import { createCalendarEvent as serverCreateCalendarEvent, payCalendarBill as serverPayBill } from "@/actions/calendar";
+import { createChore as serverCreateChore, completeChore as serverCompleteChore, logScreenTime as serverLogScreenTime, redeemScreenTime as serverRedeemScreenTime } from "@/actions/chores";
+import { updateHousehold as serverUpdateHousehold, addUserToHousehold as serverAddUser } from "@/actions/household";
+
 // TypeScript interfaces mirroring schema.ts
 export interface Household {
   id: string;
@@ -12,8 +24,8 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  image?: string;
-  householdId: string;
+  image?: string | null;
+  householdId?: string | null;
   role: "ADMIN" | "MEMBER" | "CHILD";
   pointsBalance: number;
 }
@@ -25,7 +37,9 @@ export interface Transaction {
   userName?: string;
   type: "INCOME" | "EXPENSE" | "TRANSFER";
   amount: number;
-  currency: string;
+  baseAmount: number;
+  originalAmount: number;
+  originalCurrency: string;
   category: string;
   date: string;
   notes: string;
@@ -49,7 +63,7 @@ export interface Investment {
   assetType: "Stocks" | "Real Estate" | "Crypto" | "Fixed Income" | "Cash";
   investedAmount: number;
   currentValue: number;
-  expectedAnnualReturn: number; // e.g. 8.5
+  expectedAnnualReturn: number;
   updatedAt: string;
 }
 
@@ -71,7 +85,7 @@ export interface Goal {
   currentAmount: number;
   deadline: string;
   timeframe: "SHORT" | "MEDIUM" | "LONG";
-  category: string; // Vacation, Emergency Fund, Home Purchase, etc.
+  category: string;
   priority: "LOW" | "MEDIUM" | "HIGH";
 }
 
@@ -106,81 +120,80 @@ export interface ScreenTimeLog {
   dailyLimitMinutes: number;
 }
 
-// Pre-seeded initial state
+// Fallback initial values if DB is still loading
 const INITIAL_HOUSEHOLD: Household = {
   id: "hh-1",
-  name: "Sinergy Mansion",
+  name: "Mansión Sinergy",
   baseCurrency: "USD",
   createdAt: "2026-01-15T12:00:00.000Z",
 };
 
 const INITIAL_USERS: User[] = [
-  { id: "u-1", name: "John Doe", email: "john@sinergy.home", role: "ADMIN", pointsBalance: 20, householdId: "hh-1" },
-  { id: "u-2", name: "Jane Doe", email: "jane@sinergy.home", role: "ADMIN", pointsBalance: 50, householdId: "hh-1" },
-  { id: "u-3", name: "Emily Doe", email: "emily@sinergy.home", role: "CHILD", pointsBalance: 350, householdId: "hh-1" },
-  { id: "u-4", name: "Leo Doe", email: "leo@sinergy.home", role: "CHILD", pointsBalance: 120, householdId: "hh-1" },
+  { id: "u-1", name: "Juan Pérez", email: "juan@sinergy.home", role: "ADMIN", pointsBalance: 20, householdId: "hh-1" },
+  { id: "u-2", name: "María Pérez", email: "maria@sinergy.home", role: "ADMIN", pointsBalance: 50, householdId: "hh-1" },
+  { id: "u-3", name: "Emilia Pérez", email: "emilia@sinergy.home", role: "CHILD", pointsBalance: 350, householdId: "hh-1" },
+  { id: "u-4", name: "Leo Pérez", email: "leo@sinergy.home", role: "CHILD", pointsBalance: 120, householdId: "hh-1" },
 ];
 
 const INITIAL_TRANSACTIONS: Transaction[] = [
-  { id: "t-1", householdId: "hh-1", userId: "u-1", type: "INCOME", amount: 7500, currency: "USD", category: "Salary", date: "2026-08-01T09:00:00.000Z", notes: "John Tech Corp Salary", isRecurring: true, recurrenceInterval: "monthly" },
-  { id: "t-2", householdId: "hh-1", userId: "u-2", type: "INCOME", amount: 5200, currency: "USD", category: "Salary", date: "2026-08-02T10:00:00.000Z", notes: "Jane Consulting Invoice", isRecurring: true, recurrenceInterval: "monthly" },
-  { id: "t-3", householdId: "hh-1", userId: "u-1", type: "EXPENSE", amount: 2200, currency: "USD", category: "Housing", date: "2026-08-03T12:00:00.000Z", notes: "Monthly Mortgage payment", isRecurring: true, recurrenceInterval: "monthly" },
-  { id: "t-4", householdId: "hh-1", userId: "u-2", type: "EXPENSE", amount: 480, currency: "USD", category: "Utilities", date: "2026-08-05T14:30:00.000Z", notes: "Electricity & Gas combo", isRecurring: true, recurrenceInterval: "monthly" },
-  { id: "t-5", householdId: "hh-1", userId: "u-1", type: "EXPENSE", amount: 650, currency: "USD", category: "Food", date: "2026-08-10T18:00:00.000Z", notes: "Organic Groceries", isRecurring: false },
-  { id: "t-6", householdId: "hh-1", userId: "u-1", type: "EXPENSE", amount: 120, currency: "USD", category: "Education", date: "2026-08-12T11:00:00.000Z", notes: "Emily Ballet Class", isRecurring: true, recurrenceInterval: "monthly" },
-  { id: "t-7", householdId: "hh-1", userId: "u-2", type: "EXPENSE", amount: 15.99, currency: "USD", category: "Entertainment", date: "2026-08-14T20:00:00.000Z", notes: "Netflix Premium Subscription", isRecurring: true, recurrenceInterval: "monthly" },
-  { id: "t-8", householdId: "hh-1", userId: "u-1", type: "EXPENSE", amount: 180, currency: "USD", category: "Health", date: "2026-08-15T15:00:00.000Z", notes: "Family Dental Checkup", isRecurring: false },
-  { id: "t-9", householdId: "hh-1", userId: "u-2", type: "TRANSFER", amount: 1000, currency: "USD", category: "Investment", date: "2026-08-15T09:00:00.000Z", notes: "Transfer to S&P 500 Index Fund", isRecurring: true, recurrenceInterval: "monthly" },
+  { id: "t-1", householdId: "hh-1", userId: "u-1", type: "INCOME", amount: 7500, baseAmount: 7500, originalAmount: 7500, originalCurrency: "USD", category: "Salario", date: "2026-08-01T09:00:00.000Z", notes: "Sueldo Principal Tech Corp", isRecurring: true, recurrenceInterval: "monthly" },
+  { id: "t-2", householdId: "hh-1", userId: "u-2", type: "INCOME", amount: 5200, baseAmount: 5200, originalAmount: 5200, originalCurrency: "USD", category: "Salario", date: "2026-08-02T10:00:00.000Z", notes: "Factura Consultoría María", isRecurring: true, recurrenceInterval: "monthly" },
+  { id: "t-3", householdId: "hh-1", userId: "u-1", type: "EXPENSE", amount: 2200, baseAmount: 2200, originalAmount: 2200, originalCurrency: "USD", category: "Vivienda", date: "2026-08-03T12:00:00.000Z", notes: "Pago Mensual de Hipoteca", isRecurring: true, recurrenceInterval: "monthly" },
+  { id: "t-4", householdId: "hh-1", userId: "u-2", type: "EXPENSE", amount: 480, baseAmount: 480, originalAmount: 480, originalCurrency: "USD", category: "Servicios", date: "2026-08-05T14:30:00.000Z", notes: "Combo Electricidad, Gas y Agua", isRecurring: true, recurrenceInterval: "monthly" },
+  { id: "t-5", householdId: "hh-1", userId: "u-1", type: "EXPENSE", amount: 650, baseAmount: 650, originalAmount: 650, originalCurrency: "USD", category: "Alimentos", date: "2026-08-10T18:00:00.000Z", notes: "Supermercado y Frutería Semanal", isRecurring: false },
+  { id: "t-6", householdId: "hh-1", userId: "u-1", type: "EXPENSE", amount: 120, baseAmount: 120, originalAmount: 120, originalCurrency: "USD", category: "Educación", date: "2026-08-12T11:00:00.000Z", notes: "Clases de Ballet Emilia", isRecurring: true, recurrenceInterval: "monthly" },
+  { id: "t-7", householdId: "hh-1", userId: "u-2", type: "EXPENSE", amount: 15.99, baseAmount: 15.99, originalAmount: 15.99, originalCurrency: "USD", category: "Entretenimiento", date: "2026-08-14T20:00:00.000Z", notes: "Suscripción Familiar Netflix", isRecurring: true, recurrenceInterval: "monthly" },
+  { id: "t-8", householdId: "hh-1", userId: "u-1", type: "EXPENSE", amount: 180, baseAmount: 180, originalAmount: 180, originalCurrency: "USD", category: "Salud", date: "2026-08-15T15:00:00.000Z", notes: "Consulta Odontológica Familiar", isRecurring: false },
 ];
 
 const INITIAL_RULES: DistributionRule[] = [
-  { id: "dr-1", householdId: "hh-1", name: "Essential Needs", type: "PERCENTAGE", targetBucket: "Expenses", value: 50 },
-  { id: "dr-2", householdId: "hh-1", name: "Future Growth", type: "PERCENTAGE", targetBucket: "Investment", value: 25 },
-  { id: "dr-3", householdId: "hh-1", name: "Rainy Day", type: "PERCENTAGE", targetBucket: "Savings", value: 15 },
-  { id: "dr-4", householdId: "hh-1", name: "Fun & Leisure", type: "PERCENTAGE", targetBucket: "Discretionary", value: 10 },
+  { id: "dr-1", householdId: "hh-1", name: "Gastos y Necesidades", type: "PERCENTAGE", targetBucket: "Expenses", value: 50 },
+  { id: "dr-2", householdId: "hh-1", name: "Inversión y Patrimonio", type: "PERCENTAGE", targetBucket: "Investment", value: 25 },
+  { id: "dr-3", householdId: "hh-1", name: "Fondo de Emergencia / Ahorro", type: "PERCENTAGE", targetBucket: "Savings", value: 15 },
+  { id: "dr-4", householdId: "hh-1", name: "Ocio y Gastos Personales", type: "PERCENTAGE", targetBucket: "Discretionary", value: 10 },
 ];
 
 const INITIAL_INVESTMENTS: Investment[] = [
   { id: "inv-1", householdId: "hh-1", assetName: "Vanguard S&P 500 ETF (VOO)", assetType: "Stocks", investedAmount: 45000, currentValue: 52400, expectedAnnualReturn: 9.5, updatedAt: "2026-08-15T00:00:00.000Z" },
-  { id: "inv-2", householdId: "hh-1", assetName: "Miami Rental Apartment Co-Invest", assetType: "Real Estate", investedAmount: 30000, currentValue: 34500, expectedAnnualReturn: 7.2, updatedAt: "2026-08-15T00:00:00.000Z" },
-  { id: "inv-3", householdId: "hh-1", assetName: "Bitcoin (BTC) Ledger", assetType: "Crypto", investedAmount: 15000, currentValue: 21200, expectedAnnualReturn: 18.0, updatedAt: "2026-08-15T00:00:00.000Z" },
-  { id: "inv-4", householdId: "hh-1", assetName: "Ally High Yield Savings Account", assetType: "Cash", investedAmount: 12000, currentValue: 12150, expectedAnnualReturn: 4.5, updatedAt: "2026-08-15T00:00:00.000Z" },
+  { id: "inv-2", householdId: "hh-1", assetName: "Apartamento en Alquiler Miami", assetType: "Real Estate", investedAmount: 30000, currentValue: 34500, expectedAnnualReturn: 7.2, updatedAt: "2026-08-15T00:00:00.000Z" },
+  { id: "inv-3", householdId: "hh-1", assetName: "Billetera Bitcoin (BTC)", assetType: "Crypto", investedAmount: 15000, currentValue: 21200, expectedAnnualReturn: 18.0, updatedAt: "2026-08-15T00:00:00.000Z" },
+  { id: "inv-4", householdId: "hh-1", assetName: "Cuenta de Alto Rendimiento (HYSA)", assetType: "Cash", investedAmount: 12000, currentValue: 12150, expectedAnnualReturn: 4.5, updatedAt: "2026-08-15T00:00:00.000Z" },
 ];
 
 const INITIAL_INVENTORY: InventoryItem[] = [
-  { id: "item-1", householdId: "hh-1", name: "Organic Whole Milk", category: "Pantry", currentQuantity: 1, minQuantity: 3, unit: "liters" },
-  { id: "item-2", householdId: "hh-1", name: "Basmati Rice", category: "Pantry", currentQuantity: 5, minQuantity: 2, unit: "kg" },
-  { id: "item-3", householdId: "hh-1", name: "Dishwasher Pods", category: "Cleaning", currentQuantity: 45, minQuantity: 15, unit: "pods" },
-  { id: "item-4", householdId: "hh-1", name: "Lavender Laundry Detergent", category: "Cleaning", currentQuantity: 0.5, minQuantity: 1.0, unit: "bottles" },
-  { id: "item-5", householdId: "hh-1", name: "Bamboo Toilet Paper", category: "Toiletries", currentQuantity: 12, minQuantity: 16, unit: "rolls" },
-  { id: "item-6", householdId: "hh-1", name: "Sensodyne Toothpaste", category: "Toiletries", currentQuantity: 3, minQuantity: 1, unit: "tubes" },
-  { id: "item-7", householdId: "hh-1", name: "Kids Paracetamol Syrup", category: "Medicine", currentQuantity: 1, minQuantity: 1, unit: "bottles" },
-  { id: "item-8", householdId: "hh-1", name: "Vitamin C 1000mg Gummies", category: "Medicine", currentQuantity: 40, minQuantity: 20, unit: "gummies" },
+  { id: "item-1", householdId: "hh-1", name: "Leche Entera Orgánica", category: "Pantry", currentQuantity: 1, minQuantity: 3, unit: "litros" },
+  { id: "item-2", householdId: "hh-1", name: "Arroz Basmati", category: "Pantry", currentQuantity: 5, minQuantity: 2, unit: "kg" },
+  { id: "item-3", householdId: "hh-1", name: "Cápsulas para Lavavajillas", category: "Cleaning", currentQuantity: 45, minQuantity: 15, unit: "cápsulas" },
+  { id: "item-4", householdId: "hh-1", name: "Detergente de Lavandería", category: "Cleaning", currentQuantity: 0.5, minQuantity: 1.0, unit: "botellas" },
+  { id: "item-5", householdId: "hh-1", name: "Papel Higiénico Premium", category: "Toiletries", currentQuantity: 12, minQuantity: 16, unit: "rollos" },
+  { id: "item-6", householdId: "hh-1", name: "Crema Dental Sensodyne", category: "Toiletries", currentQuantity: 3, minQuantity: 1, unit: "tubes" },
+  { id: "item-7", householdId: "hh-1", name: "Jarabe Infantil Paracetamol", category: "Medicine", currentQuantity: 1, minQuantity: 1, unit: "frascos" },
+  { id: "item-8", householdId: "hh-1", name: "Gomitas Vitamina C 1000mg", category: "Medicine", currentQuantity: 40, minQuantity: 20, unit: "gomitas" },
 ];
 
 const INITIAL_GOALS: Goal[] = [
-  { id: "g-1", householdId: "hh-1", title: "European Family Vacation", targetAmount: 8000, currentAmount: 5400, deadline: "2027-06-15", timeframe: "SHORT", category: "Vacation", priority: "HIGH" },
-  { id: "g-2", householdId: "hh-1", title: "6-Month Emergency Fund", targetAmount: 24000, currentAmount: 18500, deadline: "2028-12-31", timeframe: "MEDIUM", category: "Emergency Fund", priority: "HIGH" },
-  { id: "g-3", householdId: "hh-1", title: "New EV Downpayment", targetAmount: 15000, currentAmount: 4200, deadline: "2027-11-20", timeframe: "SHORT", category: "Vehicle", priority: "MEDIUM" },
-  { id: "g-4", householdId: "hh-1", title: "Lake House Purchase Downpayment", targetAmount: 120000, currentAmount: 35000, deadline: "2031-09-01", timeframe: "LONG", category: "Home Purchase", priority: "MEDIUM" },
+  { id: "g-1", householdId: "hh-1", title: "Vacaciones Familiares en Europa", targetAmount: 8000, currentAmount: 5400, deadline: "2027-06-15", timeframe: "SHORT", category: "Vacaciones", priority: "HIGH" },
+  { id: "g-2", householdId: "hh-1", title: "Fondo de Emergencia de 6 Meses", targetAmount: 24000, currentAmount: 18500, deadline: "2028-12-31", timeframe: "MEDIUM", category: "Fondo de Emergencia", priority: "HIGH" },
+  { id: "g-3", householdId: "hh-1", title: "Inicial de Auto Eléctrico", targetAmount: 15000, currentAmount: 4200, deadline: "2027-11-20", timeframe: "SHORT", category: "Vehículo", priority: "MEDIUM" },
+  { id: "g-4", householdId: "hh-1", title: "Inicial para Casa de Campo", targetAmount: 120000, currentAmount: 35000, deadline: "2031-09-01", timeframe: "LONG", category: "Compra de Vivienda", priority: "MEDIUM" },
 ];
 
 const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [
-  { id: "ev-1", householdId: "hh-1", title: "Mortgage Auto-pay", dueDate: "2026-08-03T12:00:00.000Z", amount: 2200, type: "BILL", status: "PAID" },
-  { id: "ev-2", householdId: "hh-1", title: "Comcast Internet Bill", dueDate: "2026-08-18T10:00:00.000Z", amount: 89.99, type: "BILL", status: "UNPAID" },
-  { id: "ev-3", householdId: "hh-1", title: "State Property Tax installment", dueDate: "2026-08-25T00:00:00.000Z", amount: 1450, type: "TAX", status: "UNPAID" },
-  { id: "ev-4", householdId: "hh-1", title: "Gym Premium Family Plan", dueDate: "2026-08-28T09:00:00.000Z", amount: 110, type: "SUBSCRIPTION", status: "UNPAID" },
-  { id: "ev-5", householdId: "hh-1", title: "Car Insurance Auto-renewal", dueDate: "2026-08-10T12:00:00.000Z", amount: 320, type: "BILL", status: "PAID" },
-  { id: "ev-6", householdId: "hh-1", title: "Annual Water District Assessment", dueDate: "2026-08-12T12:00:00.000Z", amount: 450, type: "TAX", status: "OVERDUE" },
+  { id: "ev-1", householdId: "hh-1", title: "Pago Automático de Hipoteca", dueDate: "2026-08-03T12:00:00.000Z", amount: 2200, type: "BILL", status: "PAID" },
+  { id: "ev-2", householdId: "hh-1", title: "Factura Internet Fibra Óptica", dueDate: "2026-08-18T10:00:00.000Z", amount: 89.99, type: "BILL", status: "UNPAID" },
+  { id: "ev-3", householdId: "hh-1", title: "Cuota de Impuesto Inmobiliario", dueDate: "2026-08-25T00:00:00.000Z", amount: 1450, type: "TAX", status: "UNPAID" },
+  { id: "ev-4", householdId: "hh-1", title: "Plan Familiar Gimnasio", dueDate: "2026-08-28T09:00:00.000Z", amount: 110, type: "SUBSCRIPTION", status: "UNPAID" },
+  { id: "ev-5", householdId: "hh-1", title: "Renovación Seguro de Auto", dueDate: "2026-08-10T12:00:00.000Z", amount: 320, type: "BILL", status: "PAID" },
+  { id: "ev-6", householdId: "hh-1", title: "Servicio Anual de Agua y Drenaje", dueDate: "2026-08-12T12:00:00.000Z", amount: 450, type: "TAX", status: "OVERDUE" },
 ];
 
 const INITIAL_CHORES: Chore[] = [
-  { id: "ch-1", householdId: "hh-1", assignedToUserId: "u-3", title: "Unload the Dishwasher completely", pointsReward: 30, status: "PENDING", dueDate: "2026-08-17T18:00:00.000Z" },
-  { id: "ch-2", householdId: "hh-1", assignedToUserId: "u-3", title: "Walk Toby and clean paws", pointsReward: 20, status: "COMPLETED", dueDate: "2026-08-16T12:00:00.000Z" },
-  { id: "ch-3", householdId: "hh-1", assignedToUserId: "u-4", title: "Tidy up play room toys", pointsReward: 40, status: "PENDING", dueDate: "2026-08-16T20:00:00.000Z" },
-  { id: "ch-4", householdId: "hh-1", assignedToUserId: "u-3", title: "Prepare and pack lunchbox for school", pointsReward: 50, status: "COMPLETED", dueDate: "2026-08-15T21:00:00.000Z" },
-  { id: "ch-5", householdId: "hh-1", assignedToUserId: "u-4", title: "Feed Toby (Morning & Evening)", pointsReward: 15, status: "COMPLETED", dueDate: "2026-08-16T19:00:00.000Z" },
-  { id: "ch-6", householdId: "hh-1", assignedToUserId: "u-4", title: "Do Math Worksheet exercise 4", pointsReward: 60, status: "PENDING", dueDate: "2026-08-18T15:00:00.000Z" },
+  { id: "ch-1", householdId: "hh-1", assignedToUserId: "u-3", title: "Vaciar el lavavajillas por completo", pointsReward: 30, status: "PENDING", dueDate: "2026-08-17T18:00:00.000Z" },
+  { id: "ch-2", householdId: "hh-1", assignedToUserId: "u-3", title: "Pasear a Toby y limpiar sus patas", pointsReward: 20, status: "COMPLETED", dueDate: "2026-08-16T12:00:00.000Z" },
+  { id: "ch-3", householdId: "hh-1", assignedToUserId: "u-4", title: "Ordenar los juguetes de la sala", pointsReward: 40, status: "PENDING", dueDate: "2026-08-16T20:00:00.000Z" },
+  { id: "ch-4", householdId: "hh-1", assignedToUserId: "u-3", title: "Preparar lonchera para la escuela", pointsReward: 50, status: "COMPLETED", dueDate: "2026-08-15T21:00:00.000Z" },
+  { id: "ch-5", householdId: "hh-1", assignedToUserId: "u-4", title: "Alimentar a Toby (Mañana y Noche)", pointsReward: 15, status: "COMPLETED", dueDate: "2026-08-16T19:00:00.000Z" },
+  { id: "ch-6", householdId: "hh-1", assignedToUserId: "u-4", title: "Hacer la guía de matemáticas ejercicio 4", pointsReward: 60, status: "PENDING", dueDate: "2026-08-18T15:00:00.000Z" },
 ];
 
 const INITIAL_SCREENTIME: ScreenTimeLog[] = [
@@ -188,108 +201,71 @@ const INITIAL_SCREENTIME: ScreenTimeLog[] = [
   { id: "st-2", childUserId: "u-4", date: "2026-08-16", minutesUsed: 110, dailyLimitMinutes: 90 },
 ];
 
-// Helper to safely load state from LocalStorage or initialize with defaults
+// Global Memory State Engine (with DB synchronization)
 class StorageEngine {
-  private get<T>(key: string, defaultValue: T): T {
-    if (typeof window === "undefined") return defaultValue;
-    try {
-      const stored = localStorage.getItem(`sinergy_${key}`);
-      return stored ? JSON.parse(stored) : defaultValue;
-    } catch {
-      return defaultValue;
-    }
-  }
+  public household: Household = INITIAL_HOUSEHOLD;
+  public users: User[] = INITIAL_USERS;
+  public transactions: Transaction[] = INITIAL_TRANSACTIONS;
+  public rules: DistributionRule[] = INITIAL_RULES;
+  public investments: Investment[] = INITIAL_INVESTMENTS;
+  public inventory: InventoryItem[] = INITIAL_INVENTORY;
+  public goals: Goal[] = INITIAL_GOALS;
+  public calendarEvents: CalendarEvent[] = INITIAL_CALENDAR_EVENTS;
+  public chores: Chore[] = INITIAL_CHORES;
+  public screenTime: ScreenTimeLog[] = INITIAL_SCREENTIME;
 
-  private set<T>(key: string, value: T): void {
-    if (typeof window === "undefined") return;
-    try {
-      localStorage.setItem(`sinergy_${key}`, JSON.stringify(value));
-    } catch (e) {
-      console.error("Storage error:", e);
-    }
-  }
+  public isLoaded: boolean = false;
 
-  // Current active user
   get currentUser(): User {
-    const users = this.users;
-    return users.find((u) => u.role === "ADMIN") || users[0];
+    return this.users.find((u) => u.role === "ADMIN") || this.users[0];
   }
 
-  get household(): Household {
-    return this.get<Household>("household", INITIAL_HOUSEHOLD);
-  }
-  set household(val: Household) {
-    this.set("household", val);
-  }
+  async syncWithDatabase(userEmailOrId?: string) {
+    try {
+      const emailOrId = userEmailOrId || 
+        (typeof window !== "undefined" ? (localStorage.getItem("sinergy_active_user_email") || localStorage.getItem("sinergy_active_user_id")) : null);
 
-  get users(): User[] {
-    return this.get<User[]>("users", INITIAL_USERS);
-  }
-  set users(val: User[]) {
-    this.set("users", val);
-  }
-
-  get transactions(): Transaction[] {
-    return this.get<Transaction[]>("transactions", INITIAL_TRANSACTIONS);
-  }
-  set transactions(val: Transaction[]) {
-    this.set("transactions", val);
-  }
-
-  get rules(): DistributionRule[] {
-    return this.get<DistributionRule[]>("rules", INITIAL_RULES);
-  }
-  set rules(val: DistributionRule[]) {
-    this.set("rules", val);
-  }
-
-  get investments(): Investment[] {
-    return this.get<Investment[]>("investments", INITIAL_INVESTMENTS);
-  }
-  set investments(val: Investment[]) {
-    this.set("investments", val);
-  }
-
-  get inventory(): InventoryItem[] {
-    return this.get<InventoryItem[]>("inventory", INITIAL_INVENTORY);
-  }
-  set inventory(val: InventoryItem[]) {
-    this.set("inventory", val);
-  }
-
-  get goals(): Goal[] {
-    return this.get<Goal[]>("goals", INITIAL_GOALS);
-  }
-  set goals(val: Goal[]) {
-    this.set("goals", val);
-  }
-
-  get calendarEvents(): CalendarEvent[] {
-    return this.get<CalendarEvent[]>("calendarEvents", INITIAL_CALENDAR_EVENTS);
-  }
-  set calendarEvents(val: CalendarEvent[]) {
-    this.set("calendarEvents", val);
-  }
-
-  get chores(): Chore[] {
-    return this.get<Chore[]>("chores", INITIAL_CHORES);
-  }
-  set chores(val: Chore[]) {
-    this.set("chores", val);
-  }
-
-  get screenTime(): ScreenTimeLog[] {
-    return this.get<ScreenTimeLog[]>("screentime", INITIAL_SCREENTIME);
-  }
-  set screenTime(val: ScreenTimeLog[]) {
-    this.set("screentime", val);
+      const data = await getHouseholdFullStateForUser(emailOrId || undefined);
+      if (data) {
+        if (data.household) {
+          this.household = {
+            id: data.household.id,
+            name: data.household.name,
+            baseCurrency: data.household.baseCurrency,
+            createdAt: typeof data.household.createdAt === 'object' ? data.household.createdAt.toISOString() : String(data.household.createdAt),
+          };
+        }
+        if (data.users && data.users.length > 0) {
+          this.users = data.users.map((u) => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            image: u.image,
+            householdId: u.householdId,
+            role: u.role as "ADMIN" | "MEMBER" | "CHILD",
+            pointsBalance: u.pointsBalance,
+          }));
+        } else if (emailOrId) {
+          // If no users returned yet, keep user in memory
+          this.users = this.users.filter(u => u.householdId === this.household.id);
+        }
+        this.transactions = data.transactions || [];
+        this.rules = data.rules || [];
+        this.investments = data.investments || [];
+        this.inventory = data.inventory || [];
+        this.goals = data.goals || [];
+        this.calendarEvents = data.calendarEvents || [];
+        this.chores = data.chores || [];
+        this.screenTime = data.screenTime || [];
+        this.isLoaded = true;
+      }
+    } catch (e) {
+      console.warn("Could not sync with PostgreSQL (offline or connecting):", e);
+    }
   }
 }
 
 export const dbStore = new StorageEngine();
-
-// Reactive State Provider Hook (Simulated state broadcast for multiple views)
-import { useState, useEffect } from "react";
 
 type StoreListener = () => void;
 const listeners = new Set<StoreListener>();
@@ -308,46 +284,66 @@ export function useStore() {
     screenTime: dbStore.screenTime,
   });
 
+  const triggerUpdate = () => {
+    setState({
+      household: { ...dbStore.household },
+      users: [...dbStore.users],
+      transactions: [...dbStore.transactions],
+      rules: [...dbStore.rules],
+      investments: [...dbStore.investments],
+      inventory: [...dbStore.inventory],
+      goals: [...dbStore.goals],
+      calendarEvents: [...dbStore.calendarEvents],
+      chores: [...dbStore.chores],
+      screenTime: [...dbStore.screenTime],
+    });
+    listeners.forEach((l) => l());
+  };
+
   useEffect(() => {
     const handleUpdate = () => {
       setState({
-        household: dbStore.household,
-        users: dbStore.users,
-        transactions: dbStore.transactions,
-        rules: dbStore.rules,
-        investments: dbStore.investments,
-        inventory: dbStore.inventory,
-        goals: dbStore.goals,
-        calendarEvents: dbStore.calendarEvents,
-        chores: dbStore.chores,
-        screenTime: dbStore.screenTime,
+        household: { ...dbStore.household },
+        users: [...dbStore.users],
+        transactions: [...dbStore.transactions],
+        rules: [...dbStore.rules],
+        investments: [...dbStore.investments],
+        inventory: [...dbStore.inventory],
+        goals: [...dbStore.goals],
+        calendarEvents: [...dbStore.calendarEvents],
+        chores: [...dbStore.chores],
+        screenTime: [...dbStore.screenTime],
       });
     };
 
     listeners.add(handleUpdate);
+
+    // Initial fetch from PostgreSQL on mount
+    if (!dbStore.isLoaded) {
+      const userKey = typeof window !== "undefined" ? (localStorage.getItem("sinergy_active_user_email") || localStorage.getItem("sinergy_active_user_id")) : null;
+      dbStore.syncWithDatabase(userKey || undefined).then(() => {
+        triggerUpdate();
+      });
+    }
+
     return () => {
       listeners.delete(handleUpdate);
     };
   }, []);
-
-  const triggerUpdate = () => {
-    listeners.forEach((l) => l());
-  };
 
   return {
     ...state,
     currentUser: dbStore.currentUser,
 
     // HOUSEHOLD ACTIONS
-    updateHousehold: (name: string, baseCurrency: string) => {
-      const h = { ...dbStore.household, name, baseCurrency };
-      dbStore.household = h;
+    updateHousehold: async (name: string, baseCurrency: string) => {
+      dbStore.household = { ...dbStore.household, name, baseCurrency };
       triggerUpdate();
+      await serverUpdateHousehold(dbStore.household.id, name, baseCurrency);
     },
 
     // USER ACTIONS
-    addUser: (name: string, email: string, role: "ADMIN" | "MEMBER" | "CHILD") => {
-      const users = dbStore.users;
+    addUser: async (name: string, email: string, role: "ADMIN" | "MEMBER" | "CHILD") => {
       const newUser: User = {
         id: `u-${Date.now()}`,
         name,
@@ -356,70 +352,76 @@ export function useStore() {
         pointsBalance: 0,
         householdId: dbStore.household.id,
       };
-      dbStore.users = [...users, newUser];
+      dbStore.users = [...dbStore.users, newUser];
       triggerUpdate();
+      await serverAddUser(dbStore.household.id, name, email, role);
     },
 
     // TRANSACTION ACTIONS
-    addTransaction: (t: Omit<Transaction, "id" | "householdId">) => {
-      const ts = dbStore.transactions;
-      const nextId = `t-${Date.now()}`;
+    addTransaction: async (t: {
+      userId: string;
+      type: "INCOME" | "EXPENSE" | "TRANSFER";
+      originalAmount: number;
+      originalCurrency: string;
+      category: string;
+      date: string;
+      notes: string;
+      isRecurring?: boolean;
+      recurrenceInterval?: "weekly" | "monthly" | "yearly";
+    }) => {
+      const baseAmount = convertToBase(t.originalAmount, t.originalCurrency, dbStore.household.baseCurrency);
       const newTx: Transaction = {
         ...t,
-        id: nextId,
+        id: `t-${Date.now()}`,
         householdId: dbStore.household.id,
+        amount: baseAmount,
+        baseAmount,
+        isRecurring: t.isRecurring || false,
       };
-      dbStore.transactions = [newTx, ...ts];
-
-      // Automatically execute customizable distribution rule routing for INCOME!
-      if (t.type === "INCOME") {
-        const rules = dbStore.rules;
-        const totalPct = rules.reduce((acc, curr) => acc + (curr.type === "PERCENTAGE" ? Number(curr.value) : 0), 0);
-        
-        // Let's routed amount directly into relevant virtual buckets / goals / investment / savings as transaction splits if we want,
-        // or directly update investments / goals balances!
-        rules.forEach((rule) => {
-          const ruleAmt = rule.type === "PERCENTAGE" ? (t.amount * rule.value) / 100 : rule.value;
-          
-          if (rule.targetBucket === "Investment" && ruleAmt > 0) {
-            // Find cash investment or default investment to increase
-            const invs = dbStore.investments;
-            const target = invs.find((i) => i.assetType === "Cash") || invs[0];
-            if (target) {
-              target.currentValue = Number(target.currentValue) + ruleAmt;
-              dbStore.investments = [...invs];
-            }
-          } else if (rule.targetBucket === "Savings" && ruleAmt > 0) {
-            // Distribute to the first available goal
-            const gls = dbStore.goals;
-            if (gls.length > 0) {
-              gls[0].currentAmount = Number(gls[0].currentAmount) + ruleAmt;
-              dbStore.goals = [...gls];
-            }
-          }
-        });
-      }
-
+      dbStore.transactions = [newTx, ...dbStore.transactions];
       triggerUpdate();
+
+      // Persist to Postgres via Server Action
+      await serverCreateTransaction({
+        householdId: dbStore.household.id,
+        userId: t.userId,
+        type: t.type,
+        originalAmount: t.originalAmount,
+        originalCurrency: t.originalCurrency,
+        category: t.category,
+        date: t.date,
+        notes: t.notes,
+        isRecurring: t.isRecurring,
+        recurrenceInterval: t.recurrenceInterval,
+      });
+
+      // Resync to get calculated database routing
+      dbStore.syncWithDatabase().then(triggerUpdate);
     },
 
-    deleteTransaction: (id: string) => {
+    deleteTransaction: async (id: string) => {
       dbStore.transactions = dbStore.transactions.filter((tx) => tx.id !== id);
       triggerUpdate();
+      await serverDeleteTransaction(id);
     },
 
     // RULE ACTIONS
-    updateRule: (id: string, value: number) => {
-      const rules = dbStore.rules.map((r) => (r.id === id ? { ...r, value } : r));
-      dbStore.rules = rules;
+    updateRule: async (id: string, value: number) => {
+      dbStore.rules = dbStore.rules.map((r) => (r.id === id ? { ...r, value } : r));
       triggerUpdate();
+      await serverUpdateRule(id, value);
     },
 
     // INVESTMENT ACTIONS
-    addInvestment: (assetName: string, assetType: Investment["assetType"], invested: number, current: number, returnRate: number) => {
-      const nextId = `inv-${Date.now()}`;
+    addInvestment: async (
+      assetName: string,
+      assetType: Investment["assetType"],
+      invested: number,
+      current: number,
+      returnRate: number
+    ) => {
       const newInv: Investment = {
-        id: nextId,
+        id: `inv-${Date.now()}`,
         householdId: dbStore.household.id,
         assetName,
         assetType,
@@ -430,33 +432,46 @@ export function useStore() {
       };
       dbStore.investments = [newInv, ...dbStore.investments];
       triggerUpdate();
+
+      await serverCreateInvestment({
+        householdId: dbStore.household.id,
+        assetName,
+        assetType,
+        investedAmount: invested,
+        currentValue: current,
+        expectedAnnualReturn: returnRate,
+      });
     },
 
-    updateInvestmentValue: (id: string, newValue: number) => {
-      const invs = dbStore.investments.map((inv) =>
+    updateInvestmentValue: async (id: string, newValue: number) => {
+      dbStore.investments = dbStore.investments.map((inv) =>
         inv.id === id ? { ...inv, currentValue: newValue, updatedAt: new Date().toISOString() } : inv
       );
-      dbStore.investments = invs;
       triggerUpdate();
+      await serverUpdateInvestmentValue(id, newValue);
     },
 
     // INVENTORY ACTIONS
-    updateInventoryStock: (id: string, delta: number) => {
-      const items = dbStore.inventory.map((item) => {
+    updateInventoryStock: async (id: string, delta: number) => {
+      dbStore.inventory = dbStore.inventory.map((item) => {
         if (item.id === id) {
           const qty = Math.max(0, Number(item.currentQuantity) + delta);
           return { ...item, currentQuantity: Number(qty.toFixed(2)) };
         }
         return item;
       });
-      dbStore.inventory = items;
       triggerUpdate();
+      await serverUpdateInventoryStock(id, delta);
     },
 
-    addInventoryItem: (name: string, category: InventoryItem["category"], minQty: number, unit: string) => {
-      const nextId = `item-${Date.now()}`;
+    addInventoryItem: async (
+      name: string,
+      category: InventoryItem["category"],
+      minQty: number,
+      unit: string
+    ) => {
       const newItem: InventoryItem = {
-        id: nextId,
+        id: `item-${Date.now()}`,
         householdId: dbStore.household.id,
         name,
         category,
@@ -466,13 +481,27 @@ export function useStore() {
       };
       dbStore.inventory = [...dbStore.inventory, newItem];
       triggerUpdate();
+
+      await serverCreateInventoryItem({
+        householdId: dbStore.household.id,
+        name,
+        category,
+        minQuantity: minQty,
+        unit,
+      });
     },
 
     // GOAL ACTIONS
-    addGoal: (title: string, target: number, deadline: string, timeframe: Goal["timeframe"], category: string, priority: Goal["priority"]) => {
-      const nextId = `g-${Date.now()}`;
+    addGoal: async (
+      title: string,
+      target: number,
+      deadline: string,
+      timeframe: Goal["timeframe"],
+      category: string,
+      priority: Goal["priority"]
+    ) => {
       const newGoal: Goal = {
-        id: nextId,
+        id: `g-${Date.now()}`,
         householdId: dbStore.household.id,
         title,
         targetAmount: target,
@@ -484,25 +513,34 @@ export function useStore() {
       };
       dbStore.goals = [...dbStore.goals, newGoal];
       triggerUpdate();
+
+      await serverCreateGoal({
+        householdId: dbStore.household.id,
+        title,
+        targetAmount: target,
+        deadline,
+        timeframe,
+        category,
+        priority,
+      });
     },
 
-    contributeToGoal: (id: string, amount: number) => {
-      const gls = dbStore.goals.map((g) => {
+    contributeToGoal: async (id: string, amount: number) => {
+      dbStore.goals = dbStore.goals.map((g) => {
         if (g.id === id) {
           const updated = Math.min(Number(g.targetAmount), Number(g.currentAmount) + amount);
           return { ...g, currentAmount: Number(updated.toFixed(2)) };
         }
         return g;
       });
-      dbStore.goals = gls;
       triggerUpdate();
+      await serverContributeToGoal(id, amount);
     },
 
     // CALENDAR ACTIONS
-    addCalendarEvent: (title: string, dueDate: string, amount: number, type: CalendarEvent["type"]) => {
-      const nextId = `ev-${Date.now()}`;
+    addCalendarEvent: async (title: string, dueDate: string, amount: number, type: CalendarEvent["type"]) => {
       const newEv: CalendarEvent = {
-        id: nextId,
+        id: `ev-${Date.now()}`,
         householdId: dbStore.household.id,
         title,
         dueDate,
@@ -512,64 +550,43 @@ export function useStore() {
       };
       dbStore.calendarEvents = [...dbStore.calendarEvents, newEv];
       triggerUpdate();
+
+      await serverCreateCalendarEvent({
+        householdId: dbStore.household.id,
+        title,
+        dueDate,
+        amount,
+        type,
+      });
     },
 
-    payBill: (id: string) => {
-      const evs = dbStore.calendarEvents.map((ev) => {
-        if (ev.id === id) {
-          // Subtract from user's general cash or record expense
-          return { ...ev, status: "PAID" as const };
-        }
-        return ev;
-      });
-      dbStore.calendarEvents = evs;
-
-      // also record as actual transaction automatically!
-      const evObj = dbStore.calendarEvents.find((e) => e.id === id);
-      if (evObj && evObj.amount > 0) {
-        const adminUser = dbStore.currentUser;
-        const newTx: Transaction = {
-          id: `t-pay-${Date.now()}`,
-          householdId: dbStore.household.id,
-          userId: adminUser.id,
-          type: "EXPENSE",
-          amount: evObj.amount,
-          currency: dbStore.household.baseCurrency,
-          category: evObj.type === "BILL" ? "Utilities" : evObj.type === "TAX" ? "Taxes" : "Subscription",
-          date: new Date().toISOString(),
-          notes: `Paid upcoming item: ${evObj.title}`,
-          isRecurring: false,
-        };
-        dbStore.transactions = [newTx, ...dbStore.transactions];
-      }
-
+    payBill: async (id: string) => {
+      dbStore.calendarEvents = dbStore.calendarEvents.map((ev) =>
+        ev.id === id ? { ...ev, status: "PAID" as const } : ev
+      );
       triggerUpdate();
+      await serverPayBill(id, dbStore.currentUser.id);
+      dbStore.syncWithDatabase().then(triggerUpdate);
     },
 
     // CHORE ACTIONS
-    completeChore: (id: string) => {
-      const chs = dbStore.chores.map((ch) => {
-        if (ch.id === id && ch.status === "PENDING") {
-          // Award points to the assigned user
-          const users = dbStore.users.map((u) => {
-            if (u.id === ch.assignedToUserId) {
-              return { ...u, pointsBalance: u.pointsBalance + ch.pointsReward };
-            }
-            return u;
-          });
-          dbStore.users = users;
-          return { ...ch, status: "COMPLETED" as const };
-        }
-        return ch;
-      });
-      dbStore.chores = chs;
-      triggerUpdate();
+    completeChore: async (id: string) => {
+      const chore = dbStore.chores.find((c) => c.id === id);
+      if (chore && chore.status === "PENDING") {
+        dbStore.users = dbStore.users.map((u) =>
+          u.id === chore.assignedToUserId ? { ...u, pointsBalance: u.pointsBalance + chore.pointsReward } : u
+        );
+        dbStore.chores = dbStore.chores.map((ch) =>
+          ch.id === id ? { ...ch, status: "COMPLETED" as const } : ch
+        );
+        triggerUpdate();
+        await serverCompleteChore(id);
+      }
     },
 
-    addChore: (title: string, assignedToUserId: string, pointsReward: number, dueDate?: string) => {
-      const nextId = `ch-${Date.now()}`;
+    addChore: async (title: string, assignedToUserId: string, pointsReward: number, dueDate?: string) => {
       const newCh: Chore = {
-        id: nextId,
+        id: `ch-${Date.now()}`,
         householdId: dbStore.household.id,
         assignedToUserId,
         title,
@@ -579,49 +596,53 @@ export function useStore() {
       };
       dbStore.chores = [...dbStore.chores, newCh];
       triggerUpdate();
+
+      await serverCreateChore({
+        householdId: dbStore.household.id,
+        assignedToUserId,
+        title,
+        pointsReward,
+        dueDate,
+      });
     },
 
     // SCREEN TIME ACTIONS
-    logScreenTime: (childUserId: string, minutes: number) => {
+    logScreenTime: async (childUserId: string, minutes: number) => {
       const dateStr = new Date().toISOString().split("T")[0];
-      const logs = dbStore.screenTime;
-      const matchIndex = logs.findIndex((log) => log.childUserId === childUserId && log.date === dateStr);
+      const matchIndex = dbStore.screenTime.findIndex(
+        (log) => log.childUserId === childUserId && log.date === dateStr
+      );
 
       if (matchIndex !== -1) {
-        logs[matchIndex].minutesUsed += minutes;
+        dbStore.screenTime[matchIndex].minutesUsed += minutes;
       } else {
-        logs.push({
+        dbStore.screenTime.push({
           id: `st-${Date.now()}`,
           childUserId,
           date: dateStr,
           minutesUsed: minutes,
-          dailyLimitMinutes: 120, // default
+          dailyLimitMinutes: 120,
         });
       }
-      dbStore.screenTime = [...logs];
       triggerUpdate();
+      await serverLogScreenTime(childUserId, minutes);
     },
 
-    redeemScreenTime: (childUserId: string, pointsToRedeem: number) => {
-      // 10 chore points = 15 screen minutes
-      const users = dbStore.users;
-      const child = users.find((u) => u.id === childUserId);
+    redeemScreenTime: async (childUserId: string, pointsToRedeem: number) => {
+      const child = dbStore.users.find((u) => u.id === childUserId);
       if (!child || child.pointsBalance < pointsToRedeem) return false;
 
-      // Deduct points
       child.pointsBalance -= pointsToRedeem;
-      dbStore.users = [...users];
-
-      // Increase daily limit for today
-      const dateStr = new Date().toISOString().split("T")[0];
-      const logs = dbStore.screenTime;
       const minutesGranted = Math.floor((pointsToRedeem / 10) * 15);
-      const matchIndex = logs.findIndex((log) => log.childUserId === childUserId && log.date === dateStr);
+      const dateStr = new Date().toISOString().split("T")[0];
+      const matchIndex = dbStore.screenTime.findIndex(
+        (log) => log.childUserId === childUserId && log.date === dateStr
+      );
 
       if (matchIndex !== -1) {
-        logs[matchIndex].dailyLimitMinutes += minutesGranted;
+        dbStore.screenTime[matchIndex].dailyLimitMinutes += minutesGranted;
       } else {
-        logs.push({
+        dbStore.screenTime.push({
           id: `st-${Date.now()}`,
           childUserId,
           date: dateStr,
@@ -629,9 +650,10 @@ export function useStore() {
           dailyLimitMinutes: 120 + minutesGranted,
         });
       }
-      dbStore.screenTime = [...logs];
       triggerUpdate();
-      return true;
+
+      const res = await serverRedeemScreenTime(childUserId, pointsToRedeem);
+      return res.success;
     },
   };
 }

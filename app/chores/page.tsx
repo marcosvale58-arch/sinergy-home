@@ -11,12 +11,12 @@ import {
   Star, 
   Gamepad2, 
   Zap, 
-  Hourglass,
-  ArrowRight,
-  Sparkles,
-  ShieldAlert,
-  ChevronRight,
-  Trash2
+  Hourglass, 
+  ArrowRight, 
+  Sparkles, 
+  ShieldAlert, 
+  ChevronRight, 
+  Trash2 
 } from "lucide-react";
 import { useStore, Chore, User } from "@/lib/mock-data";
 
@@ -36,9 +36,11 @@ export default function ChoresPage() {
   useEffect(() => {
     const checkUser = () => {
       if (typeof window !== "undefined") {
-        const activeId = localStorage.getItem("sinergy_active_user_id") || "u-1";
-        const current = users.find(u => u.id === activeId);
+        const activeId = localStorage.getItem("sinergy_active_user_id");
+        const activeEmail = localStorage.getItem("sinergy_active_user_email");
+        const current = users.find(u => u.id === activeId || (activeEmail && u.email.toLowerCase() === activeEmail.toLowerCase()));
         if (current) setActiveUser(current);
+        else if (users.length > 0) setActiveUser(users[0]);
       }
     };
     checkUser();
@@ -80,7 +82,7 @@ export default function ChoresPage() {
     if (success) {
       setIsRedeemModalOpen(false);
     } else {
-      alert("Insufficient points balance!");
+      alert("¡Saldo de puntos insuficiente!");
     }
   };
 
@@ -291,7 +293,7 @@ export default function ChoresPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Empty the living room trash"
+                  placeholder="ej. Sacar la basura de la sala"
                   value={choreForm.title}
                   onChange={(e) => setChoreForm({ ...choreForm, title: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
@@ -357,7 +359,7 @@ export default function ChoresPage() {
                   type="number"
                   required
                   autoFocus
-                  placeholder="Minutes"
+                  placeholder="Minutos"
                   value={screenMinutes}
                   onChange={(e) => setScreenMinutes(e.target.value)}
                   className="w-full px-4 py-4 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-black text-2xl focus:ring-2 focus:ring-rose-500 outline-none text-slate-900 dark:text-white text-center"
@@ -376,7 +378,7 @@ export default function ChoresPage() {
                   type="submit"
                   className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-500 shadow-xl shadow-rose-600/20 transition-all"
                 >
-                  {"Añadir"} {"Minutos"}
+                  {"Añadir Minutos"}
                 </button>
               </div>
             </form>

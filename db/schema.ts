@@ -48,6 +48,7 @@ export const account = pgTable("account", {
   password: text("password"),
   createdAt: timestamp("created_at").notNull(),
   updatedAt: timestamp("updated_at").notNull(),
+  issuer: text("issuer"),
 });
 
 export const verification = pgTable("verification", {
@@ -67,8 +68,10 @@ export const transactions = pgTable("transactions", {
   householdId: text("household_id").notNull().references(() => households.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull().references(() => user.id),
   type: text("type").notNull(), // INCOME, EXPENSE, TRANSFER
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  currency: text("currency").default("USD").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(), // Amount in base currency
+  baseAmount: numeric("base_amount", { precision: 12, scale: 2 }).notNull(), // Amount in base currency (for calculation)
+  originalAmount: numeric("original_amount", { precision: 12, scale: 2 }).notNull(), // Amount in original currency
+  originalCurrency: text("original_currency").default("USD").notNull(), // Original currency
   category: text("category").notNull(), // Food, Utilities, Education, Entertainment, Health, Savings, Investment, Discretionary, etc.
   date: timestamp("date").defaultNow().notNull(),
   notes: text("notes"),

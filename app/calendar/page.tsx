@@ -9,13 +9,14 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Clock, 
-  DollarSign,
-  Filter,
-  MoreVertical,
-  X,
-  CreditCard
+  DollarSign, 
+  Filter, 
+  MoreVertical, 
+  X, 
+  CreditCard 
 } from "lucide-react";
 import { useStore, CalendarEvent } from "@/lib/mock-data";
+import { formatNumber, formatDate, formatDateMonthYear } from "@/lib/format";
 
 export default function CalendarPage() {
   const { calendarEvents, household, addCalendarEvent, payBill } = useStore();
@@ -49,6 +50,12 @@ export default function CalendarPage() {
     setFormData({ title: "", amount: "", dueDate: new Date().toISOString().split('T')[0], type: "BILL" });
   };
 
+  const typeLabels: Record<string, string> = {
+    BILL: "FACTURA",
+    TAX: "IMPUESTO",
+    SUBSCRIPTION: "SUSCRIPCIÓN"
+  };
+
   return (
     <div className="space-y-8 animate-fade-in pb-16">
       
@@ -76,7 +83,7 @@ export default function CalendarPage() {
           <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-xl shadow-indigo-900/20 relative overflow-hidden">
             <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-24 h-24 bg-white/5 rounded-full" />
             <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-300 mb-1">{"Pasivos Próximos"}</h3>
-            <p className="text-3xl font-black">${totalUpcoming.toLocaleString()}</p>
+            <p className="text-3xl font-black">${formatNumber(totalUpcoming)}</p>
             <div className="flex items-center gap-2 mt-4 text-xs font-bold text-indigo-200">
               <Clock className="w-4 h-4" /> {unpaidCount} {"Pagos Pendientes"}
             </div>
@@ -85,7 +92,6 @@ export default function CalendarPage() {
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 shadow-sm">
             <h4 className="font-bold text-slate-900 dark:text-white mb-6 flex items-center justify-between">
               {"Vista de Línea de Tiempo"}
-              <button className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline">{"Pagar Todo"}</button>
             </h4>
 
             <div className="space-y-5">
@@ -101,22 +107,24 @@ export default function CalendarPage() {
                       <div className="space-y-0.5">
                         <h5 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 transition">{ev.title}</h5>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{new Date(ev.dueDate).toLocaleDateString()}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{formatDate(ev.dueDate)}</span>
                           <span className="w-1 h-1 rounded-full bg-slate-300" />
                           <span className={`text-[10px] font-black uppercase tracking-widest ${
                             ev.type === "BILL" ? "text-indigo-400" : ev.type === "TAX" ? "text-rose-400" : "text-sky-400"
-                          }`}>{ev.type}</span>
+                          }`}>{typeLabels[ev.type] || ev.type}</span>
                         </div>
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-black text-slate-900 dark:text-white">${ev.amount}</p>
-                        {ev.status !== "PAID" && (
+                        {ev.status !== "PAID" ? (
                           <button 
                             onClick={() => payBill(ev.id)}
                             className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 hover:underline uppercase tracking-tighter"
                           >
                             {"Confirmar Pago"}
                           </button>
+                        ) : (
+                          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-tight">{"PAGADO"}</span>
                         )}
                       </div>
                     </div>
@@ -127,22 +135,21 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Right: Interactive Calendar Widget (Conceptual Visualization) */}
+        {/* Right: Interactive Calendar Widget */}
         <div className="lg:col-span-8 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-8 shadow-sm">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <button onClick={prevMonth} className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-xl transition"><ChevronLeft className="w-5 h-5" /></button>
-              {currentDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+              {formatDateMonthYear(currentDate)}
               <button onClick={nextMonth} className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-xl transition"><ChevronRight className="w-5 h-5" /></button>
             </h3>
             <div className="flex items-center gap-2 bg-slate-50 dark:bg-zinc-800 p-1 rounded-xl border border-slate-200 dark:border-zinc-700">
-               <button className="px-4 py-1.5 bg-white dark:bg-zinc-700 text-xs font-bold text-indigo-600 dark:text-indigo-400 rounded-lg shadow-sm">{"Vista de Calendario"}</button>
-               <button className="px-4 py-1.5 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 rounded-lg">{"Vista de Lista"}</button>
+               <button className="px-4 py-1.5 bg-white dark:bg-zinc-700 text-xs font-bold text-indigo-600 dark:text-indigo-400 rounded-lg shadow-sm">{"Vista Mensual"}</button>
             </div>
           </div>
 
           <div className="grid grid-cols-7 gap-px bg-slate-100 dark:bg-zinc-800 rounded-2xl overflow-hidden border border-slate-100 dark:border-zinc-800">
-            {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map(d => (
+            {["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"].map(d => (
               <div key={d} className="bg-slate-50 dark:bg-zinc-800/50 py-3 text-center text-[10px] font-black text-slate-400 tracking-widest">{d}</div>
             ))}
             {Array.from({ length: 35 }).map((_, i) => {
@@ -159,7 +166,7 @@ export default function CalendarPage() {
                     <div className="mt-2 space-y-1">
                       <div className={`h-1.5 w-full rounded-full ${i === 5 ? "bg-emerald-500" : i === 25 ? "bg-rose-500" : "bg-indigo-500"}`} />
                       <div className="text-[9px] font-bold text-slate-900 dark:text-zinc-200 truncate group-hover:whitespace-normal">
-                        {i === 5 ? "Paid: Mortgage" : i === 18 ? "Internet Bill" : i === 25 ? "Prop. Tax" : "Gym sub."}
+                        {i === 5 ? "Pagado: Hipoteca" : i === 18 ? "Factura Internet" : i === 25 ? "Impuesto Inm." : "Gimnasio"}
                       </div>
                     </div>
                   )}
@@ -188,7 +195,7 @@ export default function CalendarPage() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full p-8 shadow-2xl animate-scale-up">
-            <h3 className="text-xl font-bold text-slate-950 dark:text-white mb-6">{"Programar Pasivo"}</h3>
+            <h3 className="text-xl font-bold text-slate-950 dark:text-white mb-6">{"Programar Pago / Pasivo"}</h3>
             
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
@@ -196,7 +203,7 @@ export default function CalendarPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Annual Insurance Renewal"
+                  placeholder="ej. Renovación Anual de Seguro"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
@@ -241,7 +248,7 @@ export default function CalendarPage() {
                           : "border-slate-200 dark:border-zinc-700 text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800"
                       }`}
                     >
-                      {t}
+                      {typeLabels[t]}
                     </button>
                   ))}
                 </div>

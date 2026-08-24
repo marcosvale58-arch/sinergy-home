@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { 
   LayoutDashboard, 
   Receipt, 
@@ -21,34 +21,143 @@ import {
   Hourglass,
   DollarSign,
   Sun,
-  Moon
+  Moon,
+  LogOut
 } from "lucide-react";
-import { useStore } from "@/lib/mock-data";
+import { useStore, User } from "@/lib/mock-data";
+import { signOut, useSession } from "@/lib/auth-client";
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   
+  // Connect to Better Auth session
+  const { data: authSession } = useSession();
+
   // Connect to our reactive state
   const { household, users, screenTime, chores } = useStore();
-  const [currentUserSession, setCurrentUserSession] = useState("u-1"); // Default to John (ADMIN)
+  const [currentUserSession, setCurrentUserSession] = useState<string>("");
 
   useEffect(() => {
-    // Sync theme with document class
+    // Initial theme setup from localStorage or system preference
+    const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    const initialTheme = savedTheme || systemTheme;
+    setTheme(initialTheme);
+  }, []);
+
+  useEffect(() => {
+    // Sync theme with document class and localStorage
     const root = window.document.documentElement;
     if (theme === "dark") {
       root.classList.add("dark");
+      localStorage.setItem("theme", "dark");
     } else {
       root.classList.remove("dark");
+      localStorage.setItem("theme", "light");
     }
   }, [theme]);
 
-  // Set selected user in global store (direct mutation of storage for session switching simplicity in mock state)
-  const activeUser = users.find(u => u.id === currentUserSession) || users[0];
+  // List of users available for selection
+  const sessionUser = authSession?.user;
+  const isSessionUserInStore = sessionUser && users.some(u => u.email?.toLowerCase() === sessionUser.email?.toLowerCase());
+
+  const displayUsers: User[] = sessionUser && !isSessionUserInStore
+    ? [
+        {
+          id: sessionUser.id,
+          name: sessionUser.name,
+          email: sessionUser.email,
+          role: ((sessionUser as any).role as "ADMIN" | "MEMBER" | "CHILD") || "ADMIN",
+          pointsBalance: 0,
+          householdId: "hh-1",
+        },
+        ...users,
+      ]
+    : users;
+
+  useEffect(() => {
+    // Priority 1: User from active Better Auth session
+    if (sessionUser) {
+      const authEmail = sessionUser.email?.toLowerCase();
+      const match = displayUsers.find(u => u.email?.toLowerCase() === authEmail || u.id === sessionUser.id);
+      if (match) {
+        setCurrentUserSession(match.id);
+        return;
+      }
+      setCurrentUserSession(sessionUser.id);
+      return;
+    }
+
+    // Priority 2: Stored active email or ID
+    const savedEmail = typeof window !== "undefined" ? localStorage.getItem("sinergy_active_user_email") : null;
+    const savedUserId = typeof window !== "undefined" ? localStorage.getItem("sinergy_active_user_id") : null;
+
+    if (savedEmail) {
+      const match = displayUsers.find(u => u.email?.toLowerCase() === savedEmail.toLowerCase());
+      if (match) {
+        setCurrentUserSession(match.id);
+        return;
+      }
+    }
+
+    if (savedUserId) {
+      const match = displayUsers.find(u => u.id === savedUserId);
+      if (match) {
+        setCurrentUserSession(match.id);
+        return;
+      }
+    }
+
+    // Priority 3: First user in household
+    if (displayUsers.length > 0 && !currentUserSession) {
+      setCurrentUserSession(displayUsers[0].id);
+    }
+  }, [sessionUser, users]);
+
+  // If we are on login or register pages, do not render dashboard shell
+  const isAuthPage = pathname === "/login" || pathname === "/register";
+
+  // Active user resolution
+  let activeUser: User | undefined;
+  if (currentUserSession) {
+    activeUser = displayUsers.find(u => u.id === currentUserSession || u.email?.toLowerCase() === currentUserSession.toLowerCase());
+  }
+  if (!activeUser && sessionUser) {
+    activeUser = displayUsers.find(u => u.email?.toLowerCase() === sessionUser.email?.toLowerCase() || u.id === sessionUser.id);
+  }
+  if (!activeUser && sessionUser) {
+    activeUser = {
+      id: sessionUser.id,
+      name: sessionUser.name,
+      email: sessionUser.email,
+      role: ((sessionUser as any).role as "ADMIN" | "MEMBER" | "CHILD") || "ADMIN",
+      pointsBalance: 0,
+      householdId: "hh-1",
+    };
+  }
+  if (!activeUser) {
+    activeUser = displayUsers[0] || users[0];
+  }
 
   const toggleTheme = () => {
     setTheme(prev => prev === "light" ? "dark" : "light");
+  };
+
+  const handleLogout = async () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("sinergy_active_user_id");
+      localStorage.removeItem("sinergy_active_user_email");
+      sessionStorage.clear();
+    }
+    try {
+      await signOut();
+    } catch (e) {
+      console.error("SignOut error:", e);
+    }
+    window.location.href = "/login";
   };
 
   const navItems = [
@@ -73,6 +182,14 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
+  if (isAuthPage) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 transition-colors duration-200">
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-zinc-950 transition-colors duration-200">
       
@@ -84,7 +201,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           </div>
           <div>
             <h1 className="font-bold text-lg leading-tight tracking-tight text-slate-900 dark:text-white">SINERGY<span className="text-indigo-600 dark:text-indigo-400">HOME</span></h1>
-            <p className="text-xs text-slate-400 font-medium tracking-wide">SMART FINTECH HUB</p>
+            <p className="text-xs text-slate-400 font-medium tracking-wide">HUB FINANCIERO INTELIGENTE</p>
           </div>
         </div>
 
@@ -121,31 +238,41 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
               <button 
                 onClick={toggleTheme}
                 className="p-1 rounded-lg text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-800 transition-all"
-                title="Toggle Theme"
+                title="Cambiar Tema"
               >
                 {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
               </button>
             </div>
             
             <select
-              value={currentUserSession}
+              value={activeUser?.id || currentUserSession}
               onChange={(e) => {
                 setCurrentUserSession(e.target.value);
-                // Trigger a full state rewrite in localstorage for the session mock to stick
                 if (typeof window !== "undefined") {
                   localStorage.setItem("sinergy_active_user_id", e.target.value);
-                  // Notify pages of change
+                  const selectedObj = displayUsers.find(u => u.id === e.target.value);
+                  if (selectedObj?.email) {
+                    localStorage.setItem("sinergy_active_user_email", selectedObj.email);
+                  }
                   window.dispatchEvent(new Event("storage"));
                 }
               }}
               className="text-xs py-2 px-3 border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
-              {users.map((u) => (
+              {displayUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name} ({u.role})
                 </option>
               ))}
             </select>
+
+            <button 
+              onClick={handleLogout}
+              className="w-full mt-2 flex items-center justify-center gap-2 py-2 text-xs font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              {"Cerrar Sesión"}
+            </button>
           </div>
         </div>
       </aside>
@@ -200,25 +327,37 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             })}
           </nav>
           
-          <div className="pt-6 border-t border-slate-200 dark:border-zinc-800">
-            <span className="text-xs text-slate-400 font-bold tracking-wider block mb-2">USUARIO DE SESIÓN</span>
+          <div className="pt-6 border-t border-slate-200 dark:border-zinc-800 space-y-3">
+            <span className="text-xs text-slate-400 font-bold tracking-wider block">USUARIO DE SESIÓN</span>
             <select
-              value={currentUserSession}
+              value={activeUser?.id || currentUserSession}
               onChange={(e) => {
                 setCurrentUserSession(e.target.value);
                 if (typeof window !== "undefined") {
                   localStorage.setItem("sinergy_active_user_id", e.target.value);
+                  const selectedObj = displayUsers.find(u => u.id === e.target.value);
+                  if (selectedObj?.email) {
+                    localStorage.setItem("sinergy_active_user_email", selectedObj.email);
+                  }
                   window.dispatchEvent(new Event("storage"));
                 }
               }}
               className="text-sm py-2.5 w-full px-3 border border-slate-200 dark:border-zinc-700 rounded-xl bg-slate-50 dark:bg-zinc-800 font-medium text-slate-700 dark:text-zinc-300"
             >
-              {users.map((u) => (
+              {displayUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name} ({u.role})
                 </option>
               ))}
             </select>
+
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center gap-2 py-3 text-sm font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition"
+            >
+              <LogOut className="w-4 h-4" />
+              {"Cerrar Sesión"}
+            </button>
           </div>
         </div>
       )}
@@ -242,7 +381,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                     ? "bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400"
                     : "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400"
                 }`}>
-                  {activeUser?.role}
+                  {activeUser?.role === "ADMIN" ? "Administrador" : activeUser?.role === "CHILD" ? "Hijo / Menor" : "Miembro"}
                 </span>
               </div>
               <p className="text-xs text-slate-400 dark:text-zinc-500 font-medium mt-0.5">Hogar: <span className="font-semibold text-indigo-500">{household.name}</span></p>
