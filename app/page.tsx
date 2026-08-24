@@ -19,6 +19,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { useStore, Transaction } from "@/lib/mock-data";
+import { formatNumber, formatDate } from "@/lib/format";
 import Link from "next/link";
 
 export default function Dashboard() {
@@ -40,8 +41,9 @@ export default function Dashboard() {
   useEffect(() => {
     const checkRole = () => {
       if (typeof window !== "undefined") {
-        const activeId = localStorage.getItem("sinergy_active_user_id") || "u-1";
-        const current = users.find((u) => u.id === activeId);
+        const activeId = localStorage.getItem("sinergy_active_user_id");
+        const activeEmail = localStorage.getItem("sinergy_active_user_email");
+        const current = users.find((u) => u.id === activeId || (activeEmail && u.email.toLowerCase() === activeEmail.toLowerCase()));
         if (current) {
           setActiveUserRole(current.role);
         }
@@ -73,8 +75,8 @@ export default function Dashboard() {
 
   // Debt-to-Income: e.g. housing mortgage ($2200) / total income
   const housingExpense = transactions
-    .filter((t) => "Categoría" === "Housing" || "Categoría" === "Utilities")
-    .reduce((sum, t) => sum + Number("Monto"), 0);
+    .filter((t) => t.category === "Vivienda" || t.category === "Servicios" || t.category === "Housing" || t.category === "Utilities")
+    .reduce((sum, t) => sum + Number(t.amount), 0);
   const debtToIncome = totalIncome > 0 ? (housingExpense / totalIncome) * 100 : 0;
 
   // Unpaid bills summary
@@ -90,7 +92,7 @@ export default function Dashboard() {
   // Interactive Quick Income Logger Modal / Form
   const [showQuickIncome, setShowQuickIncome] = useState(false);
   const [quickAmount, setQuickAmount] = useState("");
-  const [quickCategory, setQuickCategory] = useState("Bonus");
+  const [quickCategory, setQuickCategory] = useState("Bono");
   const [quickNotes, setQuickNotes] = useState("");
 
   const handleAddQuickIncome = (e: React.FormEvent) => {
@@ -98,20 +100,30 @@ export default function Dashboard() {
     const amt = parseFloat(quickAmount);
     if (isNaN(amt) || amt <= 0) return;
 
+    const activeUserId = (typeof window !== "undefined" ? localStorage.getItem("sinergy_active_user_id") : null) || users[0]?.id || "u-1";
+
     addTransaction({
-      userId: "u-1", // Logged in admin John
+      userId: activeUserId,
       type: "INCOME",
-      amount: amt,
-      currency: "USD",
+      originalAmount: amt,
+      originalCurrency: household.baseCurrency,
       category: quickCategory,
       date: new Date().toISOString(),
-      notes: quickNotes || `Quick logged ${quickCategory}`,
+      notes: quickNotes || `Ingreso rápido ${quickCategory}`,
       isRecurring: false,
     });
 
     setQuickAmount("");
     setQuickNotes("");
     setShowQuickIncome(false);
+  };
+
+  const assetTypeTranslations: Record<string, string> = {
+    Stocks: "Acciones",
+    "Real Estate": "Bienes Raíces",
+    Crypto: "Criptomonedas",
+    Cash: "Efectivo / Ahorro",
+    "Fixed Income": "Renta Fija",
   };
 
   return (
@@ -154,9 +166,8 @@ export default function Dashboard() {
               <PiggyBank className="text-emerald-500" /> {"Registro de Ingresos con Auto-Enrutamiento"}
             </h3>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4">
-              {"El ingreso recién registrado se distribuye automáticamente en depósitos virtuales de Ahorro e Inversión de acuerdo con sus reglas de distribución personalizadas (p. ej., 50/30/20)."}
+              {"El ingreso recién registrado se distribuye automáticamente en depósitos virtuales de Ahorro e Inversión de acuerdo con sus reglas de distribución personalizadas (ej. 50/30/20)."}
             </p>
-
 
             <form onSubmit={handleAddQuickIncome} className="space-y-4">
               <div>
@@ -179,11 +190,11 @@ export default function Dashboard() {
                   onChange={(e) => setQuickCategory(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
                 >
-                  <option value="Salary">{"Pago de Salario"}</option>
-                  <option value="Consulting">{"Honorarios de Consultoría"}</option>
-                  <option value="Bonus">{"Bono de Desempeño"}</option>
-                  <option value="Investment Returns">{"Dividendos / Retorno"}</option>
-                  <option value="Other">{"Otros Ingresos"}</option>
+                  <option value="Salario">{"Pago de Salario"}</option>
+                  <option value="Consultoría">{"Honorarios de Consultoría"}</option>
+                  <option value="Bono">{"Bono de Desempeño"}</option>
+                  <option value="Inversión">{"Dividendos / Retorno"}</option>
+                  <option value="Otros">{"Otros Ingresos"}</option>
                 </select>
               </div>
 
@@ -191,7 +202,7 @@ export default function Dashboard() {
                 <label className="block text-xs font-bold text-slate-600 dark:text-zinc-400 mb-1">{"Notas"}</label>
                 <input
                   type="text"
-                  placeholder="e.g. Q3 Profit Share Bonus"
+                  placeholder="ej. Bono de Desempeño Q3"
                   value={quickNotes}
                   onChange={(e) => setQuickNotes(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
@@ -210,7 +221,7 @@ export default function Dashboard() {
                   type="submit"
                   className="flex-1 py-2.5 bg-emerald-500 text-white rounded-xl text-sm font-semibold hover:bg-emerald-400 shadow-lg shadow-emerald-500/10 transition"
                 >
-                  Route Income
+                  {"Distribuir Ingreso"}
                 </button>
               </div>
             </form>
@@ -225,17 +236,17 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-800/80 p-6 rounded-2xl shadow-sm hover:shadow-md transition duration-150 relative overflow-hidden group">
           <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-20 h-20 bg-indigo-500/5 rounded-full group-hover:scale-150 transition-all duration-300" />
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase">{"Activos del Patrimonio Neto"}</span>
+            <span className="text-xs font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase">{"Patrimonio Neto"}</span>
             <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
               <TrendingUp className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              ${netWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${formatNumber(netWorth, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </h3>
             <div className="flex items-center gap-1.5 mt-2.5">
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">+8.4% APY Avg</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">+8.4% Rendimiento Promedio</span>
               <span className="text-xs text-slate-400 font-medium">{"crecimiento proyectado"}</span>
             </div>
           </div>
@@ -252,11 +263,11 @@ export default function Dashboard() {
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              ${netCashflow.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${formatNumber(netCashflow, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </h3>
             <div className="flex items-center gap-1.5 mt-2.5">
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">{"Ingresos"}: ${totalIncome.toLocaleString()}</span>
-              <span className="text-xs text-slate-400 font-medium">{"Egresos"}: ${totalExpense.toLocaleString()}</span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">{"Ingresos"}: ${formatNumber(totalIncome)}</span>
+              <span className="text-xs text-slate-400 font-medium">{"Egresos"}: ${formatNumber(totalExpense)}</span>
             </div>
           </div>
         </div>
@@ -265,7 +276,7 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-800/80 p-6 rounded-2xl shadow-sm hover:shadow-md transition duration-150 relative overflow-hidden group">
           <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-20 h-20 bg-sky-500/5 rounded-full group-hover:scale-150 transition-all duration-300" />
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase">Savings Rate</span>
+            <span className="text-xs font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase">{"Tasa de Ahorro"}</span>
             <div className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400">
               <PiggyBank className="w-5 h-5" />
             </div>
@@ -278,7 +289,7 @@ export default function Dashboard() {
               <div className="w-full bg-slate-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
                 <div className="bg-sky-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, savingsRate)}%` }} />
               </div>
-              <span className="text-[10px] text-slate-400 font-bold mt-1">Rule target: 50% / 30% / 20%</span>
+              <span className="text-[10px] text-slate-400 font-bold mt-1">{"Objetivo: 50% Necesidades / 30% Deseos / 20% Ahorro"}</span>
             </div>
           </div>
         </div>
@@ -287,7 +298,7 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-800/80 p-6 rounded-2xl shadow-sm hover:shadow-md transition duration-150 relative overflow-hidden group">
           <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-20 h-20 bg-amber-500/5 rounded-full group-hover:scale-150 transition-all duration-300" />
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase">Debt-to-Income</span>
+            <span className="text-xs font-bold tracking-wider text-slate-400 dark:text-zinc-500 uppercase">{"Deuda sobre Ingreso"}</span>
             <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">
               <Percent className="w-5 h-5" />
             </div>
@@ -297,10 +308,10 @@ export default function Dashboard() {
               {debtToIncome.toFixed(1)}%
             </h3>
             <div className="flex items-center gap-1.5 mt-2.5">
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${debtToIncome < 36 ? "bg-emerald-100 text-emerald-600" : "bg-rose-100 text-rose-600"}`}>
-                {debtToIncome < 36 ? "Healthy Range" : "High Burden"}
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${debtToIncome < 36 ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"}`}>
+                {debtToIncome < 36 ? "Rango Saludable" : "Carga Elevada"}
               </span>
-              <span className="text-xs text-slate-400 font-medium">Mortgage &amp; Utility ratio</span>
+              <span className="text-xs text-slate-400 font-medium">{"Ratio vivienda y servicios"}</span>
             </div>
           </div>
         </div>
@@ -310,33 +321,33 @@ export default function Dashboard() {
       {/* DETAILED INTERACTIVE CHARTS & PORTFOLIO ALLOCATION SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Left Section: Financial Visualizations (SVG based for flawless CSS scaling) */}
+        {/* Left Section: Financial Visualizations */}
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-800/80 rounded-2xl p-6 shadow-sm lg:col-span-8 space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-base text-slate-950 dark:text-white">Category Expense Distribution</h3>
-              <p className="text-xs text-slate-400 dark:text-zinc-500 font-medium">Overview of monthly expenditures mapped dynamically</p>
+              <h3 className="font-bold text-base text-slate-950 dark:text-white">{"Distribución de Gastos por Categoría"}</h3>
+              <p className="text-xs text-slate-400 dark:text-zinc-500 font-medium">{"Resumen de gastos mensuales mapeados dinámicamente"}</p>
             </div>
             <Link href="/transactions" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:underline">
-              View Transactions <ChevronRight className="w-4 h-4" />
+              {"Ver Transacciones"} <ChevronRight className="w-4 h-4" />
             </Link>
           </div>
 
           {/* Sinergy Custom Premium Bar / Trend Chart */}
           <div className="space-y-4 pt-2">
             {[
-              { label: "Housing & Mortgage", amount: 2200, pct: 60.5, color: "bg-indigo-600" },
-              { label: "Groceries & Food", amount: 650, pct: 17.9, color: "bg-emerald-500" },
-              { label: "Utilities (Power/Gas)", amount: 480, pct: 13.2, color: "bg-sky-500" },
-              { label: "Health & Medical", amount: 180, pct: 4.9, color: "bg-rose-500" },
-              { label: "Education & Classes", amount: 120, pct: 3.3, color: "bg-amber-500" },
-              { label: "Entertainment & Subscriptions", amount: 15.99, pct: 0.2, color: "bg-pink-500" },
+              { label: "Vivienda e Hipoteca", amount: 2200, pct: 60.5, color: "bg-indigo-600" },
+              { label: "Alimentos y Mercado", amount: 650, pct: 17.9, color: "bg-emerald-500" },
+              { label: "Servicios (Luz/Gas/Agua)", amount: 480, pct: 13.2, color: "bg-sky-500" },
+              { label: "Salud y Medicina", amount: 180, pct: 4.9, color: "bg-rose-500" },
+              { label: "Educación y Clases", amount: 120, pct: 3.3, color: "bg-amber-500" },
+              { label: "Entretenimiento y Suscripciones", amount: 15.99, pct: 0.2, color: "bg-pink-500" },
             ].map((exp, idx) => (
               <div key={idx} className="space-y-1.5">
                 <div className="flex justify-between text-xs font-semibold">
                   <span className="text-slate-700 dark:text-zinc-300">{exp.label}</span>
                   <span className="text-slate-900 dark:text-white">
-                    ${exp.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ({exp.pct}%)
+                    ${formatNumber(exp.amount, { maximumFractionDigits: 2 })} ({exp.pct}%)
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 dark:bg-zinc-800 rounded-full h-3 overflow-hidden">
@@ -348,24 +359,19 @@ export default function Dashboard() {
 
           {/* Asset Allocation Donut Visualizer */}
           <div className="pt-6 border-t border-slate-100 dark:border-zinc-800/80">
-            <h4 className="font-bold text-sm text-slate-900 dark:text-white mb-4">Investment Allocation Breakout</h4>
+            <h4 className="font-bold text-sm text-slate-900 dark:text-white mb-4">{"Desglose de Asignación de Inversiones"}</h4>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               {Object.entries(assetTypeTotals).map(([type, value], idx) => {
                 const totalInvs = Number(netWorth) || 1;
                 const ratio = (value / totalInvs) * 100;
-                const colors = {
-                  Stocks: "bg-indigo-500 text-indigo-700 dark:text-indigo-400",
-                  "Real Estate": "bg-emerald-500 text-emerald-700 dark:text-emerald-400",
-                  Crypto: "bg-amber-500 text-amber-700 dark:text-amber-400",
-                  Cash: "bg-sky-500 text-sky-700 dark:text-sky-400",
-                  "Fixed Income": "bg-rose-500 text-rose-700 dark:text-rose-400",
-                }[type] || "bg-slate-500 text-slate-600";
 
                 return (
                   <div key={idx} className="bg-slate-50 dark:bg-zinc-800/40 p-3 rounded-xl border border-slate-150 dark:border-zinc-800/60 flex flex-col justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">{type}</span>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">
+                      {assetTypeTranslations[type] || type}
+                    </span>
                     <div className="mt-2.5">
-                      <span className="text-sm font-bold text-slate-800 dark:text-zinc-100">${value.toLocaleString()}</span>
+                      <span className="text-sm font-bold text-slate-800 dark:text-zinc-100">${formatNumber(value)}</span>
                       <span className="text-[10px] font-semibold block text-slate-400 mt-0.5">{ratio.toFixed(1)}%</span>
                     </div>
                   </div>
@@ -380,23 +386,24 @@ export default function Dashboard() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-base text-slate-950 dark:text-white">Active Goals Progress</h3>
-                <p className="text-xs text-slate-400 dark:text-zinc-500 font-medium">Long &amp; short term wealth milestones</p>
+                <h3 className="font-bold text-base text-slate-950 dark:text-white">{"Progreso de Metas Activas"}</h3>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 font-medium">{"Hitos patrimoniales a corto y largo plazo"}</p>
               </div>
               <Link href="/goals" className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:underline">
-                Manage <ChevronRight className="w-4 h-4" />
+                {"Gestionar"} <ChevronRight className="w-4 h-4" />
               </Link>
             </div>
 
             <div className="space-y-5">
               {goals.slice(0, 3).map((goal) => {
                 const ratio = Math.min(100, (Number(goal.currentAmount) / Number(goal.targetAmount)) * 100);
+                const timeframeLabel = goal.timeframe === "SHORT" ? "CORTO PLAZO" : goal.timeframe === "MEDIUM" ? "MEDIANO PLAZO" : "LARGO PLAZO";
                 return (
                   <div key={goal.id} className="space-y-1.5 bg-slate-50/50 dark:bg-zinc-800/20 p-3.5 rounded-xl border border-slate-100 dark:border-zinc-800/40">
                     <div className="flex justify-between items-start">
                       <div>
                         <h4 className="font-bold text-xs text-slate-900 dark:text-white leading-tight">{goal.title}</h4>
-                        <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-zinc-500 tracking-wide mt-0.5 block">{goal.timeframe} TERM • {goal.category}</span>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-zinc-500 tracking-wide mt-0.5 block">{timeframeLabel} • {goal.category}</span>
                       </div>
                       <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">{ratio.toFixed(1)}%</span>
                     </div>
@@ -406,8 +413,8 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex justify-between text-[11px] font-medium text-slate-500 dark:text-zinc-400 mt-1">
-                      <span>${goal.currentAmount.toLocaleString()} saved</span>
-                      <span>Target: ${goal.targetAmount.toLocaleString()}</span>
+                      <span>${formatNumber(goal.currentAmount)} {"ahorrado"}</span>
+                      <span>{"Objetivo"}: ${formatNumber(goal.targetAmount)}</span>
                     </div>
                   </div>
                 );
@@ -416,11 +423,11 @@ export default function Dashboard() {
           </div>
 
           <div className="pt-6 border-t border-slate-100 dark:border-zinc-800/80 mt-4">
-            <h4 className="font-bold text-xs text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-3">Household Rules Split Ratio</h4>
+            <h4 className="font-bold text-xs text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-3">{"Perfil de Distribución del Hogar"}</h4>
             <div className="bg-indigo-600 text-white rounded-2xl p-4 flex items-center justify-between shadow-md shadow-indigo-600/10">
               <div className="space-y-1">
-                <p className="text-[10px] font-bold tracking-wide uppercase text-indigo-200">Current Allocation Profile</p>
-                <h5 className="font-extrabold text-base">50% Expenses / 25% Invest / 15% Save</h5>
+                <p className="text-[10px] font-bold tracking-wide uppercase text-indigo-200">{"Perfil de Asignación Activo"}</p>
+                <h5 className="font-extrabold text-base">{"50% Gastos / 25% Inversión / 15% Ahorro"}</h5>
               </div>
               <Link href="/distribution" className="bg-white/10 hover:bg-white/20 p-2 rounded-xl text-white transition">
                 <ArrowRight className="w-5 h-5" />
@@ -438,10 +445,10 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-800/80 p-6 rounded-2xl shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-indigo-500" /> Smart Calendars &amp; Bills
+              <Calendar className="w-4 h-4 text-indigo-500" /> {"Calendario y Facturas"}
             </h4>
             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 uppercase">
-              {unpaidBills.length} alerts
+              {unpaidBills.length} {"alertas"}
             </span>
           </div>
 
@@ -450,7 +457,7 @@ export default function Dashboard() {
               <div key={ev.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-100 dark:border-zinc-800/60 bg-slate-50/30 dark:bg-zinc-800/10">
                 <div className="space-y-0.5">
                   <span className="font-semibold text-xs text-slate-800 dark:text-zinc-200 block">{ev.title}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold block">{new Date(ev.dueDate).toLocaleDateString()}</span>
+                  <span className="text-[10px] text-slate-400 font-semibold block">{formatDate(ev.dueDate)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-900 dark:text-white">${ev.amount}</span>
@@ -461,7 +468,7 @@ export default function Dashboard() {
                       ? "bg-rose-100 text-rose-600 dark:bg-rose-950/20 animate-pulse"
                       : "bg-amber-50 text-amber-600 dark:bg-amber-950/20"
                   }`}>
-                    {ev.status}
+                    {ev.status === "PAID" ? "PAGADO" : ev.status === "OVERDUE" ? "VENCIDO" : "PENDIENTE"}
                   </span>
                 </div>
               </div>
@@ -469,7 +476,7 @@ export default function Dashboard() {
           </div>
 
           <Link href="/calendar" className="block text-center text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-2">
-            Open Bills Calendar &rarr;
+            {"Abrir Calendario de Facturas"} &rarr;
           </Link>
         </div>
 
@@ -477,10 +484,10 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-800/80 p-6 rounded-2xl shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Chore point leaderboard
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {"Ranking de Tareas"}
             </h4>
             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 uppercase">
-              active
+              {"activo"}
             </span>
           </div>
 
@@ -503,7 +510,7 @@ export default function Dashboard() {
           </div>
 
           <Link href="/chores" className="block text-center text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-2">
-            Organize Tasks &rarr;
+            {"Organizar Tareas"} &rarr;
           </Link>
         </div>
 
@@ -511,10 +518,10 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-zinc-800/80 p-6 rounded-2xl shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-rose-500" /> Screen Limit Monitor
+              <Smartphone className="w-4 h-4 text-rose-500" /> {"Límite de Pantalla"}
             </h4>
             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 uppercase">
-              Today
+              {"Hoy"}
             </span>
           </div>
 
@@ -543,7 +550,7 @@ export default function Dashboard() {
           </div>
 
           <Link href="/chores" className="block text-center text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-2">
-            Redeem points for Screen Time &rarr;
+            {"Canjear Puntos por Pantalla"} &rarr;
           </Link>
         </div>
 

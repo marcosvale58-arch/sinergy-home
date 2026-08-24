@@ -16,6 +16,7 @@ import {
   LayoutGrid
 } from "lucide-react";
 import { useStore, DistributionRule } from "@/lib/mock-data";
+import { formatNumber } from "@/lib/format";
 
 export default function DistributionPage() {
   const { rules, household, updateRule } = useStore();
@@ -30,6 +31,7 @@ export default function DistributionPage() {
 
   const handleSave = () => {
     localRules.forEach(r => updateRule(r.id, Number(r.value)));
+    alert("¡Reglas de distribución actualizadas exitosamente!");
   };
 
   const totalPercentage = localRules.reduce((acc, r) => acc + (r.type === "PERCENTAGE" ? Number(r.value) : 0), 0);
@@ -46,6 +48,13 @@ export default function DistributionPage() {
     "Investment": "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800",
     "Savings": "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800",
     "Discretionary": "text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40 border-pink-200 dark:border-pink-800"
+  };
+
+  const bucketNames: Record<string, string> = {
+    Expenses: "Gastos y Necesidades",
+    Investment: "Inversión y Patrimonio",
+    Savings: "Ahorro y Metas",
+    Discretionary: "Gastos Personales y Ocio"
   };
 
   return (
@@ -77,7 +86,7 @@ export default function DistributionPage() {
             <div className="flex items-center justify-between mb-8">
               <h3 className="font-bold text-slate-900 dark:text-white">{"Estrategia de Asignación Activa"}</h3>
               <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                totalPercentage === 100 ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-rose-50 text-rose-600 border-rose-200"
+                totalPercentage === 100 ? "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400"
               }`}>
                 {"Total"}: {totalPercentage}%
               </div>
@@ -86,7 +95,7 @@ export default function DistributionPage() {
             <div className="space-y-10">
               {localRules.map((rule) => {
                 const Icon = bucketIcons[rule.targetBucket as keyof typeof bucketIcons] || Settings2;
-                const colorClasses = bucketColors[rule.targetBucket as keyof typeof bucketColors];
+                const colorClasses = bucketColors[rule.targetBucket as keyof typeof bucketColors] || "text-indigo-600 bg-indigo-50 border-indigo-200";
                 
                 return (
                   <div key={rule.id} className="space-y-4">
@@ -97,7 +106,9 @@ export default function DistributionPage() {
                         </div>
                         <div>
                           <h4 className="font-bold text-sm text-slate-900 dark:text-white leading-tight">{rule.name}</h4>
-                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{"Objetivo"}: {rule.targetBucket}</span>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                            {"Objetivo"}: {bucketNames[rule.targetBucket] || rule.targetBucket}
+                          </span>
                         </div>
                       </div>
                       <div className="text-right">
@@ -116,8 +127,8 @@ export default function DistributionPage() {
                         className="w-full h-2 bg-slate-100 dark:bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                       />
                       <div className="flex justify-between mt-2">
-                        <span className="text-[10px] font-bold text-slate-300">{"Mínimo"} 0%</span>
-                        <span className="text-[10px] font-bold text-slate-300">{"Máximo"} 100%</span>
+                        <span className="text-[10px] font-bold text-slate-400">{"Mínimo"} 0%</span>
+                        <span className="text-[10px] font-bold text-slate-400">{"Máximo"} 100%</span>
                       </div>
                     </div>
                   </div>
@@ -161,7 +172,7 @@ export default function DistributionPage() {
                         <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
                         <span className="text-xs font-bold text-indigo-100">{r.name} ({r.value}%)</span>
                       </div>
-                      <span className="text-xs font-black">${amt.toLocaleString()}</span>
+                      <span className="text-xs font-black">${formatNumber(amt)}</span>
                     </div>
                   );
                 })}
@@ -169,7 +180,7 @@ export default function DistributionPage() {
 
               <div className="pt-4 mt-2 border-t border-white/5">
                 <p className="text-[10px] text-indigo-300/60 font-medium italic">
-                  * Funds will be automatically credited to corresponding digital asset ledgers and goal balances upon income verification.
+                  {"* Los fondos se acreditarán automáticamente en los registros de activos digitales y balances de metas correspondientes al verificar los ingresos."}
                 </p>
               </div>
             </div>
@@ -182,20 +193,17 @@ export default function DistributionPage() {
             </h3>
             <div className="space-y-4">
               <div className="space-y-1">
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">The 50/30/20 Rule</h4>
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">{"La Regla 50/30/20"}</h4>
                 <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
-                  A popular strategy where 50% goes to Needs (Expenses), 30% to Wants (Discretionary), and 20% to Savings &amp; Debt repayment.
+                  {"Una estrategia popular donde el 50% va a Necesidades (Gastos), 30% a Deseos (Discrecional) y 20% a Ahorros e Inversión."}
                 </p>
               </div>
               <div className="space-y-1">
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">Waterfall Method</h4>
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">{"Método de Cascada (Waterfall)"}</h4>
                 <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
-                  Priority routing where fixed amounts go to high-priority goals first, and percentages handle the overflow.
+                  {"Enrutamiento por prioridad donde montos fijos van primero a metas prioritarias, y los porcentajes gestionan el remanente."}
                 </p>
               </div>
-              <button className="w-full py-2.5 mt-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-600 dark:text-zinc-300 hover:bg-slate-100 transition">
-                {"Explorar Biblioteca de Estrategias"}
-              </button>
             </div>
           </div>
 
