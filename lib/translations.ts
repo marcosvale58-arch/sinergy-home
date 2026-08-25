@@ -150,6 +150,9 @@ export const translations = {
     itemName: "Item Name",
     minAlertQuantity: "Minimum Alert Quantity",
     unitType: "Unit Type",
+    deleteSupply: "Delete Supply",
+    confirmDeleteSupplyTitle: "Delete Supply?",
+    confirmDeleteSupplyDesc: "Are you sure you want to delete this supply from inventory? This action cannot be undone.",
   },
   es: {
     // ... existing keys ...
@@ -254,5 +257,8 @@ export const translations = {
     itemName: "Nombre del Artículo",
     minAlertQuantity: "Cantidad Mínima de Alerta",
     unitType: "Tipo de Unidad",
+    deleteSupply: "Eliminar Suministro",
+    confirmDeleteSupplyTitle: "¿Eliminar suministro?",
+    confirmDeleteSupplyDesc: "¿Estás seguro de que deseas eliminar este suministro del inventario? Esta acción no se puede deshacer.",
   }
 };

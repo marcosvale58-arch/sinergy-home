@@ -6,11 +6,11 @@ import { getHouseholdFullState, getHouseholdFullStateForUser } from "@/actions/d
 import { createTransaction as serverCreateTransaction, deleteTransaction as serverDeleteTransaction } from "@/actions/transactions";
 import { updateDistributionRule as serverUpdateRule } from "@/actions/distribution";
 import { createInvestment as serverCreateInvestment, updateInvestmentValue as serverUpdateInvestmentValue } from "@/actions/investments";
-import { createInventoryItem as serverCreateInventoryItem, updateInventoryStock as serverUpdateInventoryStock } from "@/actions/inventory";
+import { createInventoryItem as serverCreateInventoryItem, updateInventoryStock as serverUpdateInventoryStock, deleteInventoryItem as serverDeleteInventoryItem } from "@/actions/inventory";
 import { createGoal as serverCreateGoal, contributeToGoal as serverContributeToGoal } from "@/actions/goals";
 import { createCalendarEvent as serverCreateCalendarEvent, payCalendarBill as serverPayBill } from "@/actions/calendar";
-import { createChore as serverCreateChore, completeChore as serverCompleteChore, logScreenTime as serverLogScreenTime, redeemScreenTime as serverRedeemScreenTime } from "@/actions/chores";
-import { updateHousehold as serverUpdateHousehold, addUserToHousehold as serverAddUser } from "@/actions/household";
+import { createChore as serverCreateChore, completeChore as serverCompleteChore, logScreenTime as serverLogScreenTime, redeemScreenTime as serverRedeemScreenTime, updateScreenTimeLimit as serverUpdateScreenTimeLimit, setScreenTime as serverSetScreenTime, resetDailyChores as serverResetDailyChores, updateChore as serverUpdateChore, deleteChore as serverDeleteChore } from "@/actions/chores";
+import { updateHousehold as serverUpdateHousehold, addUserToHousehold as serverAddUser, removeUserFromHousehold as serverRemoveUser, updateUserRole as serverUpdateUserRole } from "@/actions/household";
 
 // TypeScript interfaces mirroring schema.ts
 export interface Household {
@@ -235,7 +235,7 @@ class StorageEngine {
             createdAt: typeof data.household.createdAt === 'object' ? data.household.createdAt.toISOString() : String(data.household.createdAt),
           };
         }
-        if (data.users && data.users.length > 0) {
+        if (data.users && Array.isArray(data.users)) {
           this.users = data.users.map((u) => ({
             id: u.id,
             name: u.name,
@@ -245,18 +245,31 @@ class StorageEngine {
             role: u.role as "ADMIN" | "MEMBER" | "CHILD",
             pointsBalance: u.pointsBalance,
           }));
-        } else if (emailOrId) {
-          // If no users returned yet, keep user in memory
-          this.users = this.users.filter(u => u.householdId === this.household.id);
         }
-        this.transactions = data.transactions || [];
-        this.rules = data.rules || [];
-        this.investments = data.investments || [];
-        this.inventory = data.inventory || [];
-        this.goals = data.goals || [];
-        this.calendarEvents = data.calendarEvents || [];
-        this.chores = data.chores || [];
-        this.screenTime = data.screenTime || [];
+        if (data.transactions && Array.isArray(data.transactions)) {
+          this.transactions = data.transactions;
+        }
+        if (data.rules && Array.isArray(data.rules)) {
+          this.rules = data.rules;
+        }
+        if (data.investments && Array.isArray(data.investments)) {
+          this.investments = data.investments;
+        }
+        if (data.inventory && Array.isArray(data.inventory)) {
+          this.inventory = data.inventory;
+        }
+        if (data.goals && Array.isArray(data.goals)) {
+          this.goals = data.goals;
+        }
+        if (data.calendarEvents && Array.isArray(data.calendarEvents)) {
+          this.calendarEvents = data.calendarEvents;
+        }
+        if (data.chores && Array.isArray(data.chores)) {
+          this.chores = data.chores;
+        }
+        if (data.screenTime && Array.isArray(data.screenTime)) {
+          this.screenTime = data.screenTime;
+        }
         this.isLoaded = true;
       }
     } catch (e) {
@@ -344,17 +357,42 @@ export function useStore() {
 
     // USER ACTIONS
     addUser: async (name: string, email: string, role: "ADMIN" | "MEMBER" | "CHILD") => {
+      const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+      const cleanEmail = email && email.trim().length > 0 ? email.trim() : `${cleanName || "miembro"}-${Date.now()}@sinergy.home`;
       const newUser: User = {
         id: `u-${Date.now()}`,
         name,
-        email,
+        email: cleanEmail,
         role,
         pointsBalance: 0,
         householdId: dbStore.household.id,
       };
       dbStore.users = [...dbStore.users, newUser];
       triggerUpdate();
-      await serverAddUser(dbStore.household.id, name, email, role);
+
+      try {
+        const res = await serverAddUser(dbStore.household.id, name, cleanEmail, role);
+        if (res?.success && res.data) {
+          dbStore.users = dbStore.users.map((u) => (u.id === newUser.id ? { ...u, id: res.data.id } : u));
+          triggerUpdate();
+        }
+      } catch (err) {
+        console.error("Error adding user to household on server:", err);
+      }
+    },
+
+    removeUser: async (userId: string) => {
+      dbStore.users = dbStore.users.filter((u) => u.id !== userId);
+      triggerUpdate();
+      await serverRemoveUser(userId);
+    },
+
+    updateUserRole: async (userId: string, role: "ADMIN" | "MEMBER" | "CHILD") => {
+      dbStore.users = dbStore.users.map((u) =>
+        u.id === userId ? { ...u, role } : u
+      );
+      triggerUpdate();
+      await serverUpdateUserRole(userId, role);
     },
 
     // TRANSACTION ACTIONS
@@ -369,34 +407,51 @@ export function useStore() {
       isRecurring?: boolean;
       recurrenceInterval?: "weekly" | "monthly" | "yearly";
     }) => {
-      const baseAmount = convertToBase(t.originalAmount, t.originalCurrency, dbStore.household.baseCurrency);
+      const originalAmountNum = Number(t.originalAmount) || 0;
+      const baseAmount = convertToBase(
+        originalAmountNum,
+        t.originalCurrency || dbStore.household.baseCurrency,
+        dbStore.household.baseCurrency
+      );
       const newTx: Transaction = {
         ...t,
         id: `t-${Date.now()}`,
         householdId: dbStore.household.id,
+        userId: t.userId || dbStore.users[0]?.id || "u-1",
         amount: baseAmount,
         baseAmount,
+        originalAmount: originalAmountNum,
+        originalCurrency: t.originalCurrency || dbStore.household.baseCurrency,
         isRecurring: t.isRecurring || false,
       };
+
       dbStore.transactions = [newTx, ...dbStore.transactions];
       triggerUpdate();
 
-      // Persist to Postgres via Server Action
-      await serverCreateTransaction({
-        householdId: dbStore.household.id,
-        userId: t.userId,
-        type: t.type,
-        originalAmount: t.originalAmount,
-        originalCurrency: t.originalCurrency,
-        category: t.category,
-        date: t.date,
-        notes: t.notes,
-        isRecurring: t.isRecurring,
-        recurrenceInterval: t.recurrenceInterval,
-      });
+      try {
+        // Persist to Postgres via Server Action
+        const res = await serverCreateTransaction({
+          householdId: dbStore.household.id,
+          userId: t.userId || dbStore.users[0]?.id || "u-1",
+          type: t.type,
+          originalAmount: originalAmountNum,
+          originalCurrency: t.originalCurrency || dbStore.household.baseCurrency,
+          category: t.category,
+          date: t.date,
+          notes: t.notes,
+          isRecurring: t.isRecurring,
+          recurrenceInterval: t.recurrenceInterval,
+        });
 
-      // Resync to get calculated database routing
-      dbStore.syncWithDatabase().then(triggerUpdate);
+        if (res?.success && res.data) {
+          dbStore.transactions = dbStore.transactions.map((tx) =>
+            tx.id === newTx.id ? { ...tx, id: res.data.id } : tx
+          );
+          triggerUpdate();
+        }
+      } catch (err) {
+        console.error("Error creating transaction in DB:", err);
+      }
     },
 
     deleteTransaction: async (id: string) => {
@@ -489,6 +544,12 @@ export function useStore() {
         minQuantity: minQty,
         unit,
       });
+    },
+
+    deleteInventoryItem: async (id: string) => {
+      dbStore.inventory = dbStore.inventory.filter((item) => item.id !== id);
+      triggerUpdate();
+      await serverDeleteInventoryItem(id);
     },
 
     // GOAL ACTIONS
@@ -606,6 +667,43 @@ export function useStore() {
       });
     },
 
+    updateChore: async (input: {
+      id: string;
+      title: string;
+      assignedToUserId: string;
+      pointsReward: number;
+      status?: "PENDING" | "COMPLETED";
+    }) => {
+      dbStore.chores = dbStore.chores.map((ch) =>
+        ch.id === input.id
+          ? {
+              ...ch,
+              title: input.title,
+              assignedToUserId: input.assignedToUserId,
+              pointsReward: input.pointsReward,
+              ...(input.status ? { status: input.status } : {}),
+            }
+          : ch
+      );
+      triggerUpdate();
+      await serverUpdateChore(input);
+    },
+
+    deleteChore: async (id: string) => {
+      dbStore.chores = dbStore.chores.filter((ch) => ch.id !== id);
+      triggerUpdate();
+      await serverDeleteChore(id);
+    },
+
+    resetDailyChores: async () => {
+      dbStore.chores = dbStore.chores.map((ch) => ({
+        ...ch,
+        status: "PENDING" as const,
+      }));
+      triggerUpdate();
+      await serverResetDailyChores(dbStore.household.id);
+    },
+
     // SCREEN TIME ACTIONS
     logScreenTime: async (childUserId: string, minutes: number) => {
       const dateStr = new Date().toISOString().split("T")[0];
@@ -655,5 +753,51 @@ export function useStore() {
       const res = await serverRedeemScreenTime(childUserId, pointsToRedeem);
       return res.success;
     },
+
+    updateScreenTimeLimit: async (childUserId: string, dailyLimitMinutes: number) => {
+      const dateStr = new Date().toISOString().split("T")[0];
+      const matchIndex = dbStore.screenTime.findIndex(
+        (log) => log.childUserId === childUserId && log.date === dateStr
+      );
+
+      if (matchIndex !== -1) {
+        dbStore.screenTime[matchIndex].dailyLimitMinutes = dailyLimitMinutes;
+      } else {
+        dbStore.screenTime.push({
+          id: `st-${Date.now()}`,
+          childUserId,
+          date: dateStr,
+          minutesUsed: 0,
+          dailyLimitMinutes,
+        });
+      }
+      triggerUpdate();
+      await serverUpdateScreenTimeLimit(childUserId, dailyLimitMinutes);
+    },
+
+    setScreenTime: async (childUserId: string, minutesUsed: number, dailyLimitMinutes?: number) => {
+      const dateStr = new Date().toISOString().split("T")[0];
+      const matchIndex = dbStore.screenTime.findIndex(
+        (log) => log.childUserId === childUserId && log.date === dateStr
+      );
+
+      if (matchIndex !== -1) {
+        dbStore.screenTime[matchIndex].minutesUsed = minutesUsed;
+        if (dailyLimitMinutes !== undefined) {
+          dbStore.screenTime[matchIndex].dailyLimitMinutes = dailyLimitMinutes;
+        }
+      } else {
+        dbStore.screenTime.push({
+          id: `st-${Date.now()}`,
+          childUserId,
+          date: dateStr,
+          minutesUsed,
+          dailyLimitMinutes: dailyLimitMinutes ?? 120,
+        });
+      }
+      triggerUpdate();
+      await serverSetScreenTime(childUserId, minutesUsed, dailyLimitMinutes);
+    },
   };
 }
+

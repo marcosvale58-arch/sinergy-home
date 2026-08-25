@@ -46,8 +46,19 @@ export async function updateHousehold(householdId: string, name: string, baseCur
 
 export async function getHouseholdUsers(householdId: string = "hh-1") {
   try {
+    let targetHouseholdId = householdId;
+    const hh = await db.query.households.findFirst({
+      where: eq(schema.households.id, householdId),
+    });
+    if (!hh) {
+      const firstHh = await db.query.households.findFirst();
+      if (firstHh) {
+        targetHouseholdId = firstHh.id;
+      }
+    }
+
     return await db.query.user.findMany({
-      where: eq(schema.user.householdId, householdId),
+      where: eq(schema.user.householdId, targetHouseholdId),
     });
   } catch (error) {
     console.error("Error fetching household users:", error);
@@ -62,17 +73,58 @@ export async function addUserToHousehold(
   role: "ADMIN" | "MEMBER" | "CHILD" = "MEMBER"
 ) {
   try {
+    // 1. Resolve household
+    let targetHouseholdId = householdId;
+    const hh = await db.query.households.findFirst({
+      where: eq(schema.households.id, householdId),
+    });
+    if (!hh) {
+      const firstHh = await db.query.households.findFirst();
+      if (firstHh) {
+        targetHouseholdId = firstHh.id;
+      }
+    }
+
+    // 2. Generate unique clean email
+    const cleanName = name.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+    const cleanEmail = email && email.trim().length > 0
+      ? email.trim().toLowerCase()
+      : `${cleanName || "miembro"}-${Date.now()}@sinergy.home`;
+
+    // 3. Check if user already exists
+    const existing = await db.query.user.findFirst({
+      where: eq(schema.user.email, cleanEmail),
+    });
+
+    if (existing) {
+      const [updated] = await db
+        .update(schema.user)
+        .set({
+          name,
+          role,
+          householdId: targetHouseholdId,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.user.id, existing.id))
+        .returning();
+
+      revalidatePath("/settings");
+      revalidatePath("/");
+      revalidatePath("/chores");
+      return { success: true, data: updated };
+    }
+
     const id = `u-${Date.now()}`;
     const [newUser] = await db
       .insert(schema.user)
       .values({
         id,
         name,
-        email: email.trim().toLowerCase(),
+        email: cleanEmail,
         emailVerified: true,
         role,
         pointsBalance: 0,
-        householdId,
+        householdId: targetHouseholdId,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -80,6 +132,7 @@ export async function addUserToHousehold(
 
     revalidatePath("/settings");
     revalidatePath("/");
+    revalidatePath("/chores");
     return { success: true, data: newUser };
   } catch (error: any) {
     console.error("Error adding user to household:", error);
@@ -140,3 +193,33 @@ export async function createNewHouseholdForUser(
     return { success: false, error: error.message };
   }
 }
+
+export async function removeUserFromHousehold(userId: string) {
+  try {
+    await db.delete(schema.user).where(eq(schema.user.id, userId));
+    revalidatePath("/settings");
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error removing user from household:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateUserRole(userId: string, role: "ADMIN" | "MEMBER" | "CHILD") {
+  try {
+    const [updated] = await db
+      .update(schema.user)
+      .set({ role, updatedAt: new Date() })
+      .where(eq(schema.user.id, userId))
+      .returning();
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    return { success: true, data: updated };
+  } catch (error: any) {
+    console.error("Error updating user role:", error);
+    return { success: false, error: error.message };
+  }
+}
+

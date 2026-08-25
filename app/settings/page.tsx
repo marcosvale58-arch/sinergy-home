@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Settings, 
@@ -22,23 +22,32 @@ import {
   Clock,
   ShieldCheck
 } from "lucide-react";
-import { useStore } from "@/lib/mock-data";
+import { useStore, User } from "@/lib/mock-data";
 import { signOut } from "@/lib/auth-client";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { household, users, updateHousehold, addUser } = useStore();
+  const { household, users, updateHousehold, addUser, removeUser, updateUserRole } = useStore();
   const [activeTab, setActiveTab] = useState<"general" | "members" | "notifications">("general");
 
   // General settings state
-  const [householdName, setHouseholdName] = useState(household.name);
-  const [currency, setCurrency] = useState(household.baseCurrency);
+  const [householdName, setHouseholdName] = useState(household?.name || "Mi Hogar");
+  const [currency, setCurrency] = useState(household?.baseCurrency || "USD");
   const [timezone, setTimezone] = useState("America/Caracas");
   const [dateFormat, setDateFormat] = useState("DD/MM/YYYY");
   const [generalSaved, setGeneralSaved] = useState(false);
 
+  // Sync state when household loads or updates
+  useEffect(() => {
+    if (household) {
+      if (household.name) setHouseholdName(household.name);
+      if (household.baseCurrency) setCurrency(household.baseCurrency);
+    }
+  }, [household]);
+
   // Add User modal state
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [userForm, setUserForm] = useState({
     name: "",
     email: "",
@@ -60,7 +69,7 @@ export default function SettingsPage() {
 
   const handleUpdateHousehold = (e: React.FormEvent) => {
     e.preventDefault();
-    updateHousehold(householdName, currency);
+    updateHousehold(householdName, "USD");
     setGeneralSaved(true);
     setTimeout(() => setGeneralSaved(false), 3000);
   };
@@ -70,6 +79,13 @@ export default function SettingsPage() {
     addUser(userForm.name, userForm.email, userForm.role);
     setIsAddUserModalOpen(false);
     setUserForm({ name: "", email: "", role: "MEMBER" });
+  };
+
+  const handleConfirmDeleteUser = () => {
+    if (userToDelete) {
+      removeUser(userToDelete.id);
+      setUserToDelete(null);
+    }
   };
 
   const handleSaveNotifications = (e: React.FormEvent) => {
@@ -168,16 +184,13 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">{"Moneda Base"}</label>
-                    <select 
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
-                    >
-                      <option value="USD">USD ($) - Dólar Estadounidense</option>
-                      <option value="EUR">EUR (€) - Euro</option>
-                      <option value="VES">VES (Bs.) - Bolívar Soberano</option>
-                    </select>
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">{"Moneda del Sistema"}</label>
+                    <div className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800/60 font-semibold text-slate-700 dark:text-zinc-300 flex items-center justify-between text-sm">
+                      <span className="font-bold">USD ($) - Dólar Estadounidense</span>
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400">
+                        Moneda Fija
+                      </span>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -252,36 +265,52 @@ export default function SettingsPage() {
 
               <div className="divide-y divide-slate-100 dark:divide-zinc-800">
                 {users.map((user) => (
-                  <div key={user.id} className="py-4 flex items-center justify-between group">
+                  <div key={user.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-zinc-800 flex items-center justify-center font-black text-indigo-600 dark:text-indigo-400 text-lg border border-indigo-100 dark:border-zinc-700">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-zinc-800 flex items-center justify-center font-black text-indigo-600 dark:text-indigo-400 text-lg border border-indigo-100 dark:border-zinc-700 shrink-0">
                         {user.name.charAt(0)}
                       </div>
                       <div>
                         <h5 className="text-sm font-bold text-slate-900 dark:text-white">{user.name}</h5>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-[11px] font-semibold text-slate-400">{user.email}</span>
-                          <span className="w-1 h-1 rounded-full bg-slate-300" />
-                          <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                            user.role === "ADMIN" 
-                              ? "bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400" 
-                              : user.role === "CHILD" 
-                              ? "bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400" 
-                              : "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
-                          }`}>
-                            {user.role === "ADMIN" ? "Administrador" : user.role === "CHILD" ? "Hijo / Menor" : "Miembro"}
-                          </span>
+                          {user.role === "CHILD" && (
+                            <>
+                              <span className="w-1 h-1 rounded-full bg-slate-300" />
+                              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">{user.pointsBalance} pts</span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {user.role === "CHILD" && (
-                      <div className="text-right">
-                        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-3 py-1.5 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
-                          {user.pointsBalance} pts
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-3 self-end sm:self-center">
+                      <select
+                        value={user.role}
+                        onChange={(e) => updateUserRole(user.id, e.target.value as any)}
+                        className={`text-xs py-1.5 px-3 rounded-xl font-bold uppercase tracking-wider border transition outline-none cursor-pointer ${
+                          user.role === "ADMIN" 
+                            ? "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/40" 
+                            : user.role === "CHILD" 
+                            ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/40" 
+                            : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40"
+                        }`}
+                      >
+                        <option value="ADMIN">Administrador</option>
+                        <option value="MEMBER">Miembro</option>
+                        <option value="CHILD">Hijo / Menor</option>
+                      </select>
+
+                      {users.length > 1 && (
+                        <button
+                          onClick={() => setUserToDelete(user)}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition"
+                          title={`Eliminar a ${user.name}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -517,6 +546,42 @@ export default function SettingsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mb-4">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            
+            <h3 className="text-xl font-bold text-slate-950 dark:text-white mb-2">
+              {"¿Eliminar miembro del hogar?"}
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-zinc-400 mb-6">
+              {"¿Estás seguro de que deseas eliminar a"} <strong className="text-slate-800 dark:text-zinc-200 font-semibold">{userToDelete.name}</strong> ({userToDelete.email}) {"del hogar? Esta acción eliminará su acceso."}
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="flex-1 py-3 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-sm text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition"
+              >
+                {"Cancelar"}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteUser}
+                className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold text-sm hover:bg-rose-500 shadow-lg shadow-rose-600/20 transition-all flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                {"Eliminar"}
+              </button>
+            </div>
           </div>
         </div>
       )}

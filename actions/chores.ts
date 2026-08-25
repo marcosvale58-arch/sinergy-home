@@ -15,8 +15,19 @@ export interface CreateChoreInput {
 
 export async function getChores(householdId: string = "hh-1") {
   try {
+    let targetHouseholdId = householdId;
+    const hh = await db.query.households.findFirst({
+      where: eq(schema.households.id, householdId),
+    });
+    if (!hh) {
+      const firstHh = await db.query.households.findFirst();
+      if (firstHh) {
+        targetHouseholdId = firstHh.id;
+      }
+    }
+
     const chores = await db.query.chores.findMany({
-      where: eq(schema.chores.householdId, householdId),
+      where: eq(schema.chores.householdId, targetHouseholdId),
       with: {
         assignedUser: true,
       },
@@ -40,13 +51,53 @@ export async function getChores(householdId: string = "hh-1") {
 
 export async function createChore(input: CreateChoreInput) {
   try {
+    // 1. Resolve household
+    let targetHouseholdId = input.householdId;
+    const hh = await db.query.households.findFirst({
+      where: eq(schema.households.id, input.householdId),
+    });
+    if (!hh) {
+      const firstHh = await db.query.households.findFirst();
+      if (firstHh) {
+        targetHouseholdId = firstHh.id;
+      }
+    }
+
+    // 2. Resolve assigned user safely
+    let targetUserId = input.assignedToUserId;
+    const dbUser = await db.query.user.findFirst({
+      where: eq(schema.user.id, targetUserId),
+    });
+
+    if (!dbUser) {
+      const [createdUser] = await db
+        .insert(schema.user)
+        .values({
+          id: targetUserId,
+          name: "Miembro del Hogar",
+          email: `usuario-${targetUserId}@sinergy.home`,
+          emailVerified: true,
+          role: "CHILD",
+          pointsBalance: 0,
+          householdId: targetHouseholdId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (createdUser) {
+        targetUserId = createdUser.id;
+      }
+    }
+
     const nextId = `ch-${Date.now()}`;
     const [chore] = await db
       .insert(schema.chores)
       .values({
         id: nextId,
-        householdId: input.householdId,
-        assignedToUserId: input.assignedToUserId,
+        householdId: targetHouseholdId,
+        assignedToUserId: targetUserId,
         title: input.title,
         pointsReward: input.pointsReward,
         status: "PENDING",
@@ -218,3 +269,152 @@ export async function redeemScreenTime(childUserId: string, pointsToRedeem: numb
     return { success: false, error: error.message };
   }
 }
+
+export async function updateScreenTimeLimit(childUserId: string, dailyLimitMinutes: number) {
+  try {
+    const dateStr = new Date().toISOString().split("T")[0];
+    const existing = await db.query.screenTimeLogs.findFirst({
+      where: and(
+        eq(schema.screenTimeLogs.childUserId, childUserId),
+        eq(schema.screenTimeLogs.date, dateStr)
+      ),
+    });
+
+    if (existing) {
+      const [updated] = await db
+        .update(schema.screenTimeLogs)
+        .set({ dailyLimitMinutes })
+        .where(eq(schema.screenTimeLogs.id, existing.id))
+        .returning();
+
+      revalidatePath("/");
+      revalidatePath("/chores");
+      return { success: true, data: updated };
+    } else {
+      const nextId = `st-${Date.now()}`;
+      const [created] = await db
+        .insert(schema.screenTimeLogs)
+        .values({
+          id: nextId,
+          childUserId,
+          date: dateStr,
+          minutesUsed: 0,
+          dailyLimitMinutes,
+        })
+        .returning();
+
+      revalidatePath("/");
+      revalidatePath("/chores");
+      return { success: true, data: created };
+    }
+  } catch (error: any) {
+    console.error("Error updating screen time limit:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function setScreenTime(childUserId: string, minutesUsed: number, dailyLimitMinutes?: number) {
+  try {
+    const dateStr = new Date().toISOString().split("T")[0];
+    const existing = await db.query.screenTimeLogs.findFirst({
+      where: and(
+        eq(schema.screenTimeLogs.childUserId, childUserId),
+        eq(schema.screenTimeLogs.date, dateStr)
+      ),
+    });
+
+    if (existing) {
+      const [updated] = await db
+        .update(schema.screenTimeLogs)
+        .set({
+          minutesUsed,
+          ...(dailyLimitMinutes !== undefined ? { dailyLimitMinutes } : {}),
+        })
+        .where(eq(schema.screenTimeLogs.id, existing.id))
+        .returning();
+
+      revalidatePath("/");
+      revalidatePath("/chores");
+      return { success: true, data: updated };
+    } else {
+      const nextId = `st-${Date.now()}`;
+      const [created] = await db
+        .insert(schema.screenTimeLogs)
+        .values({
+          id: nextId,
+          childUserId,
+          date: dateStr,
+          minutesUsed,
+          dailyLimitMinutes: dailyLimitMinutes ?? 120,
+        })
+        .returning();
+
+      revalidatePath("/");
+      revalidatePath("/chores");
+      return { success: true, data: created };
+    }
+  } catch (error: any) {
+    console.error("Error setting screen time:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function resetDailyChores(householdId: string = "hh-1") {
+  try {
+    const updated = await db
+      .update(schema.chores)
+      .set({ status: "PENDING" })
+      .where(eq(schema.chores.householdId, householdId))
+      .returning();
+
+    revalidatePath("/");
+    revalidatePath("/chores");
+    return { success: true, data: updated };
+  } catch (error: any) {
+    console.error("Error resetting daily chores:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateChore(input: {
+  id: string;
+  title: string;
+  assignedToUserId: string;
+  pointsReward: number;
+  status?: "PENDING" | "COMPLETED";
+}) {
+  try {
+    const [updated] = await db
+      .update(schema.chores)
+      .set({
+        title: input.title,
+        assignedToUserId: input.assignedToUserId,
+        pointsReward: input.pointsReward,
+        ...(input.status ? { status: input.status } : {}),
+      })
+      .where(eq(schema.chores.id, input.id))
+      .returning();
+
+    revalidatePath("/");
+    revalidatePath("/chores");
+    return { success: true, data: updated };
+  } catch (error: any) {
+    console.error("Error updating chore:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteChore(id: string) {
+  try {
+    await db.delete(schema.chores).where(eq(schema.chores.id, id));
+
+    revalidatePath("/");
+    revalidatePath("/chores");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error deleting chore:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+
