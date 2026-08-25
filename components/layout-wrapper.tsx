@@ -79,43 +79,46 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     : users;
 
   useEffect(() => {
-    // Priority 1: User from active Better Auth session
-    if (sessionUser) {
-      const authEmail = sessionUser.email?.toLowerCase();
-      const match = displayUsers.find(u => u.email?.toLowerCase() === authEmail || u.id === sessionUser.id);
-      if (match) {
-        setCurrentUserSession(match.id);
+    const handleStorageSync = () => {
+      const savedUserId = typeof window !== "undefined" ? localStorage.getItem("sinergy_active_user_id") : null;
+      const savedEmail = typeof window !== "undefined" ? localStorage.getItem("sinergy_active_user_email") : null;
+
+      if (savedUserId) {
+        const match = displayUsers.find(u => u.id === savedUserId);
+        if (match) {
+          setCurrentUserSession(match.id);
+          return;
+        }
+      }
+
+      if (savedEmail) {
+        const match = displayUsers.find(u => u.email?.toLowerCase() === savedEmail.toLowerCase());
+        if (match) {
+          setCurrentUserSession(match.id);
+          return;
+        }
+      }
+
+      if (sessionUser) {
+        const authEmail = sessionUser.email?.toLowerCase();
+        const match = displayUsers.find(u => u.email?.toLowerCase() === authEmail || u.id === sessionUser.id);
+        if (match) {
+          setCurrentUserSession(match.id);
+          return;
+        }
+        setCurrentUserSession(sessionUser.id);
         return;
       }
-      setCurrentUserSession(sessionUser.id);
-      return;
-    }
 
-    // Priority 2: Stored active email or ID
-    const savedEmail = typeof window !== "undefined" ? localStorage.getItem("sinergy_active_user_email") : null;
-    const savedUserId = typeof window !== "undefined" ? localStorage.getItem("sinergy_active_user_id") : null;
-
-    if (savedEmail) {
-      const match = displayUsers.find(u => u.email?.toLowerCase() === savedEmail.toLowerCase());
-      if (match) {
-        setCurrentUserSession(match.id);
-        return;
+      if (displayUsers.length > 0) {
+        setCurrentUserSession(displayUsers[0].id);
       }
-    }
+    };
 
-    if (savedUserId) {
-      const match = displayUsers.find(u => u.id === savedUserId);
-      if (match) {
-        setCurrentUserSession(match.id);
-        return;
-      }
-    }
-
-    // Priority 3: First user in household
-    if (displayUsers.length > 0 && !currentUserSession) {
-      setCurrentUserSession(displayUsers[0].id);
-    }
-  }, [sessionUser, users]);
+    handleStorageSync();
+    window.addEventListener("storage", handleStorageSync);
+    return () => window.removeEventListener("storage", handleStorageSync);
+  }, [displayUsers, sessionUser]);
 
   // If we are on login or register pages, do not render dashboard shell
   const isAuthPage = pathname === "/login" || pathname === "/register";
@@ -142,6 +145,18 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     activeUser = displayUsers[0] || users[0];
   }
 
+  const handleUserChange = (selectedId: string) => {
+    setCurrentUserSession(selectedId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sinergy_active_user_id", selectedId);
+      const selectedObj = displayUsers.find(u => u.id === selectedId);
+      if (selectedObj?.email) {
+        localStorage.setItem("sinergy_active_user_email", selectedObj.email);
+      }
+      window.dispatchEvent(new Event("storage"));
+    }
+  };
+
   const toggleTheme = () => {
     setTheme(prev => prev === "light" ? "dark" : "light");
   };
@@ -160,22 +175,36 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     window.location.href = "/login";
   };
 
-  const navItems = [
+  // Role-based Navigation Permissions
+  const allNavItems = [
     { name: "Panel Ejecutivo", href: "/", icon: LayoutDashboard, roles: ["ADMIN", "MEMBER", "CHILD"] },
     { name: "Ingresos y Gastos", href: "/transactions", icon: Receipt, roles: ["ADMIN", "MEMBER"] },
     { name: "Distribución de Ingresos", href: "/distribution", icon: PieChart, roles: ["ADMIN"] },
-    { name: "Portafolio y Proyecciones", href: "/investments", icon: TrendingUp, roles: ["ADMIN", "MEMBER"] },
-    { name: "Inventario y Suministros", href: "/inventory", icon: PackageCheck, roles: ["ADMIN", "MEMBER"] },
+    { name: "Portafolio y Proyecciones", href: "/investments", icon: TrendingUp, roles: ["ADMIN"] },
+    { name: "Inventario y Suministros", href: "/inventory", icon: PackageCheck, roles: ["ADMIN", "MEMBER", "CHILD"] },
     { name: "Planificador de Metas", href: "/goals", icon: Target, roles: ["ADMIN", "MEMBER", "CHILD"] },
     { name: "Calendario y Facturas", href: "/calendar", icon: Calendar, roles: ["ADMIN", "MEMBER"] },
     { name: "Tareas y Tiempo de Pantalla", href: "/chores", icon: CheckSquare, roles: ["ADMIN", "MEMBER", "CHILD"] },
     { name: "Ajustes del Sistema", href: "/settings", icon: Settings, roles: ["ADMIN"] },
   ];
 
-  // Helper to check authorization
-  const isAuthorized = (itemRoles: string[]) => {
-    return itemRoles.includes(activeUser?.role || "MEMBER");
-  };
+  const currentRole = activeUser?.role || "ADMIN";
+  const navItems = allNavItems.filter((item) => item.roles.includes(currentRole));
+
+  // Route Guarding: redirect if role lacks permission
+  useEffect(() => {
+    if (activeUser && activeUser.role === "CHILD") {
+      const allowedForChild = ["/", "/chores", "/goals", "/inventory"];
+      if (!allowedForChild.includes(pathname)) {
+        router.push("/chores");
+      }
+    } else if (activeUser && activeUser.role === "MEMBER") {
+      const forbiddenForMember = ["/settings", "/distribution", "/investments"];
+      if (forbiddenForMember.includes(pathname)) {
+        router.push("/");
+      }
+    }
+  }, [activeUser?.role, pathname, router]);
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -208,10 +237,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         {/* Sidebar Nav */}
         <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
           {navItems.map((item) => {
-            const allowed = isAuthorized(item.roles);
             const isActive = pathname === item.href;
-            
-            if (!allowed) return null;
 
             return (
               <Link
@@ -219,7 +245,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                 href={item.href}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-150 ${
                   isActive
-                    ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                    ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold"
                     : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-900 dark:hover:text-zinc-200"
                 }`}
               >
@@ -246,17 +272,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             
             <select
               value={activeUser?.id || currentUserSession}
-              onChange={(e) => {
-                setCurrentUserSession(e.target.value);
-                if (typeof window !== "undefined") {
-                  localStorage.setItem("sinergy_active_user_id", e.target.value);
-                  const selectedObj = displayUsers.find(u => u.id === e.target.value);
-                  if (selectedObj?.email) {
-                    localStorage.setItem("sinergy_active_user_email", selectedObj.email);
-                  }
-                  window.dispatchEvent(new Event("storage"));
-                }
-              }}
+              onChange={(e) => handleUserChange(e.target.value)}
               className="text-xs py-2 px-3 border border-slate-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
               {displayUsers.map((u) => (
@@ -304,19 +320,18 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       {/* MOBILE DRAWER */}
       {isMobileMenuOpen && (
         <div className="md:hidden fixed inset-0 top-16 bg-white dark:bg-zinc-900 z-20 flex flex-col p-6 animate-fade-in-down border-t border-slate-100 dark:border-zinc-800">
-          <nav className="flex-1 space-y-2">
+          <nav className="flex-1 space-y-2 overflow-y-auto">
             {navItems.map((item) => {
-              const allowed = isAuthorized(item.roles);
               const isActive = pathname === item.href;
-              if (!allowed) return null;
 
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold ${
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition ${
                     isActive
-                      ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400"
+                      ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-bold"
                       : "text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800"
                   }`}
                 >
@@ -331,17 +346,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             <span className="text-xs text-slate-400 font-bold tracking-wider block">USUARIO DE SESIÓN</span>
             <select
               value={activeUser?.id || currentUserSession}
-              onChange={(e) => {
-                setCurrentUserSession(e.target.value);
-                if (typeof window !== "undefined") {
-                  localStorage.setItem("sinergy_active_user_id", e.target.value);
-                  const selectedObj = displayUsers.find(u => u.id === e.target.value);
-                  if (selectedObj?.email) {
-                    localStorage.setItem("sinergy_active_user_email", selectedObj.email);
-                  }
-                  window.dispatchEvent(new Event("storage"));
-                }
-              }}
+              onChange={(e) => handleUserChange(e.target.value)}
               className="text-sm py-2.5 w-full px-3 border border-slate-200 dark:border-zinc-700 rounded-xl bg-slate-50 dark:bg-zinc-800 font-medium text-slate-700 dark:text-zinc-300"
             >
               {displayUsers.map((u) => (

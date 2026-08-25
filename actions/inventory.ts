@@ -82,3 +82,19 @@ export async function updateInventoryStock(id: string, delta: number) {
     return { success: false, error: error.message };
   }
 }
+
+export async function deleteInventoryItem(id: string) {
+  try {
+    await db
+      .delete(schema.inventoryItems)
+      .where(eq(schema.inventoryItems.id, id));
+
+    revalidatePath("/inventory");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error deleting inventory item:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+

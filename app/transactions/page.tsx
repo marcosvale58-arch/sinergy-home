@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Plus, 
   Search, 
@@ -31,43 +31,51 @@ export default function TransactionsPage() {
   // Form State
   const [formData, setFormData] = useState({
     amount: "",
-    currency: household.baseCurrency,
+    currency: household.baseCurrency || "USD",
     type: "EXPENSE" as "INCOME" | "EXPENSE" | "TRANSFER",
     category: "Alimentos",
     notes: "",
     date: new Date().toISOString().split('T')[0],
     isRecurring: false,
-    userId: typeof window !== "undefined" ? (localStorage.getItem("sinergy_active_user_id") || "u-1") : "u-1"
+    userId: typeof window !== "undefined" ? (localStorage.getItem("sinergy_active_user_id") || users[0]?.id || "u-1") : "u-1"
   });
+
+  // Keep currency synced if household changes
+  useEffect(() => {
+    if (household?.baseCurrency) {
+      setFormData(prev => ({ ...prev, currency: household.baseCurrency }));
+    }
+  }, [household?.baseCurrency]);
 
   // Filtered Data
   const filteredTransactions = transactions.filter(t => {
-    const matchesSearch = t.notes.toLowerCase().includes(search.toLowerCase()) || 
-                         t.category.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = (t.notes || "").toLowerCase().includes(search.toLowerCase()) || 
+                         (t.category || "").toLowerCase().includes(search.toLowerCase());
     const matchesType = filterType === "ALL" || t.type === filterType;
     return matchesSearch && matchesType;
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.amount) return;
+    const amt = parseFloat(formData.amount);
+    if (isNaN(amt) || amt <= 0) return;
 
-    const currentUserId = formData.userId || (typeof window !== "undefined" ? (localStorage.getItem("sinergy_active_user_id") || users[0]?.id || "u-1") : "u-1");
+    const currentUserId = formData.userId || (typeof window !== "undefined" ? (localStorage.getItem("sinergy_active_user_id") || users[0]?.id || "u-1") : users[0]?.id || "u-1");
 
     addTransaction({
       userId: currentUserId,
       type: formData.type,
-      originalAmount: parseFloat(formData.amount),
-      originalCurrency: formData.currency,
+      originalAmount: amt,
+      originalCurrency: formData.currency || household.baseCurrency || "USD",
       category: formData.category,
-      date: new Date(formData.date).toISOString(),
-      notes: formData.notes,
+      date: formData.date ? new Date(formData.date).toISOString() : new Date().toISOString(),
+      notes: formData.notes || `${formData.type === "INCOME" ? "Ingreso" : "Gasto"}: ${formData.category}`,
       isRecurring: formData.isRecurring
     });
 
     setFormData({
       amount: "",
-      currency: household.baseCurrency,
+      currency: household.baseCurrency || "USD",
       type: "EXPENSE",
       category: "Alimentos",
       notes: "",
@@ -278,9 +286,9 @@ export default function TransactionsPage() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">{"Monto"}</label>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">{"Monto ($ USD)"}</label>
                   <div className="relative">
                     <input
                       type="number"
@@ -292,19 +300,6 @@ export default function TransactionsPage() {
                       placeholder="0.00"
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">{"Moneda"}</label>
-                  <select
-                    value={formData.currency}
-                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
-                  >
-                    <option value="USD">USD ($)</option>
-                    <option value="EUR">EUR (€)</option>
-                    <option value="VES">VES (Bs.)</option>
-                  </select>
                 </div>
 
                 <div>

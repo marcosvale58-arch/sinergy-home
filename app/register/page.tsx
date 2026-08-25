@@ -173,37 +173,20 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wide">
-                  {"Nombre del Hogar"}
-                </label>
-                <div className="relative">
-                  <Home className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text"
-                    required
-                    placeholder="ej. Familia Pérez"
-                    value={formData.householdName}
-                    onChange={(e) => setFormData({ ...formData, householdName: e.target.value })}
-                    className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wide">
-                  {"Moneda Base"}
-                </label>
-                <select
-                  value={formData.baseCurrency}
-                  onChange={(e) => setFormData({ ...formData, baseCurrency: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white text-sm"
-                >
-                  <option value="USD">USD ($)</option>
-                  <option value="EUR">EUR (€)</option>
-                  <option value="VES">VES (Bs.)</option>
-                </select>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wide">
+                {"Nombre de tu Hogar"}
+              </label>
+              <div className="relative">
+                <Home className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input 
+                  type="text"
+                  required
+                  placeholder="ej. Familia Pérez"
+                  value={formData.householdName}
+                  onChange={(e) => setFormData({ ...formData, householdName: e.target.value })}
+                  className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white text-sm"
+                />
               </div>
             </div>
 

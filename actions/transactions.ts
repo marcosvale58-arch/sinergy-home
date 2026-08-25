@@ -21,8 +21,19 @@ export interface CreateTransactionInput {
 
 export async function getTransactions(householdId: string = "hh-1") {
   try {
+    let targetHouseholdId = householdId;
+    const hh = await db.query.households.findFirst({
+      where: eq(schema.households.id, householdId),
+    });
+    if (!hh) {
+      const firstHh = await db.query.households.findFirst();
+      if (firstHh) {
+        targetHouseholdId = firstHh.id;
+      }
+    }
+
     const txs = await db.query.transactions.findMany({
-      where: eq(schema.transactions.householdId, householdId),
+      where: eq(schema.transactions.householdId, targetHouseholdId),
       orderBy: [desc(schema.transactions.date)],
       with: {
         user: true,
@@ -35,14 +46,14 @@ export async function getTransactions(householdId: string = "hh-1") {
       userId: t.userId,
       userName: t.user?.name || "Usuario",
       type: t.type as "INCOME" | "EXPENSE" | "TRANSFER",
-      amount: parseFloat(t.amount),
-      baseAmount: parseFloat(t.baseAmount),
-      originalAmount: parseFloat(t.originalAmount),
-      originalCurrency: t.originalCurrency,
+      amount: parseFloat(String(t.amount || 0)),
+      baseAmount: parseFloat(String(t.baseAmount || t.amount || 0)),
+      originalAmount: parseFloat(String(t.originalAmount || t.amount || 0)),
+      originalCurrency: t.originalCurrency || "USD",
       category: t.category,
-      date: t.date.toISOString(),
+      date: t.date instanceof Date ? t.date.toISOString() : new Date(t.date).toISOString(),
       notes: t.notes || "",
-      isRecurring: t.isRecurring,
+      isRecurring: t.isRecurring || false,
       recurrenceInterval: t.recurrenceInterval as "weekly" | "monthly" | "yearly" | undefined,
     }));
   } catch (error) {
@@ -53,29 +64,91 @@ export async function getTransactions(householdId: string = "hh-1") {
 
 export async function createTransaction(input: CreateTransactionInput) {
   try {
-    // 1. Get household base currency
-    const hh = await db.query.households.findFirst({
-      where: eq(schema.households.id, input.householdId),
+    // 1. Resolve household
+    let householdId = input.householdId;
+    let hh = await db.query.households.findFirst({
+      where: eq(schema.households.id, householdId),
     });
+
+    if (!hh) {
+      const firstHh = await db.query.households.findFirst();
+      if (firstHh) {
+        hh = firstHh;
+        householdId = firstHh.id;
+      } else {
+        const [createdHh] = await db
+          .insert(schema.households)
+          .values({
+            id: householdId || "hh-1",
+            name: "Mi Hogar",
+            baseCurrency: "USD",
+            createdAt: new Date(),
+          })
+          .returning();
+        hh = createdHh;
+        householdId = createdHh.id;
+      }
+    }
+
     const baseCurrency = hh?.baseCurrency || "USD";
 
-    // 2. Convert to base currency
-    const baseAmount = convertToBase(input.originalAmount, input.originalCurrency, baseCurrency);
+    // 2. Resolve user
+    let userId = input.userId;
+    let targetUser = await db.query.user.findFirst({
+      where: eq(schema.user.id, userId),
+    });
+
+    if (!targetUser) {
+      const hhUser = await db.query.user.findFirst({
+        where: eq(schema.user.householdId, householdId),
+      });
+      if (hhUser) {
+        userId = hhUser.id;
+        targetUser = hhUser;
+      } else {
+        const anyUser = await db.query.user.findFirst();
+        if (anyUser) {
+          userId = anyUser.id;
+          targetUser = anyUser;
+        } else {
+          const [createdUser] = await db
+            .insert(schema.user)
+            .values({
+              id: userId || `u-${Date.now()}`,
+              name: "Usuario",
+              email: "usuario@sinergy.home",
+              emailVerified: true,
+              role: "ADMIN",
+              pointsBalance: 0,
+              householdId: householdId,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning();
+          userId = createdUser.id;
+          targetUser = createdUser;
+        }
+      }
+    }
+
+    // 3. Convert to base currency
+    const originalAmountNum = Number(input.originalAmount) || 0;
+    const baseAmount = convertToBase(originalAmountNum, input.originalCurrency || baseCurrency, baseCurrency);
     const nextId = `t-${Date.now()}`;
 
-    // 3. Insert transaction
+    // 4. Insert transaction
     const [tx] = await db
       .insert(schema.transactions)
       .values({
         id: nextId,
-        householdId: input.householdId,
-        userId: input.userId,
+        householdId: householdId,
+        userId: userId,
         type: input.type,
         amount: baseAmount.toFixed(2),
         baseAmount: baseAmount.toFixed(2),
-        originalAmount: input.originalAmount.toFixed(2),
-        originalCurrency: input.originalCurrency,
-        category: input.category,
+        originalAmount: originalAmountNum.toFixed(2),
+        originalCurrency: input.originalCurrency || baseCurrency,
+        category: input.category || "Otros",
         date: input.date ? new Date(input.date) : new Date(),
         notes: input.notes || "",
         isRecurring: input.isRecurring || false,
@@ -83,10 +156,10 @@ export async function createTransaction(input: CreateTransactionInput) {
       })
       .returning();
 
-    // 4. Auto-route income into Investment/Savings based on distribution rules!
+    // 5. Auto-route income into Investment/Savings based on distribution rules
     if (input.type === "INCOME") {
       const rules = await db.query.distributionRules.findMany({
-        where: eq(schema.distributionRules.householdId, input.householdId),
+        where: eq(schema.distributionRules.householdId, householdId),
       });
 
       for (const rule of rules) {
@@ -95,7 +168,7 @@ export async function createTransaction(input: CreateTransactionInput) {
 
         if (rule.targetBucket === "Investment" && ruleAmt > 0) {
           const invs = await db.query.investments.findMany({
-            where: eq(schema.investments.householdId, input.householdId),
+            where: eq(schema.investments.householdId, householdId),
           });
           const targetInv = invs.find((i) => i.assetType === "Cash") || invs[0];
           if (targetInv) {
@@ -107,7 +180,7 @@ export async function createTransaction(input: CreateTransactionInput) {
           }
         } else if (rule.targetBucket === "Savings" && ruleAmt > 0) {
           const gls = await db.query.goals.findMany({
-            where: eq(schema.goals.householdId, input.householdId),
+            where: eq(schema.goals.householdId, householdId),
           });
           if (gls.length > 0) {
             const firstGoal = gls[0];

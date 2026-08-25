@@ -45,47 +45,46 @@ export default function Dashboard() {
         const activeEmail = localStorage.getItem("sinergy_active_user_email");
         const current = users.find((u) => u.id === activeId || (activeEmail && u.email.toLowerCase() === activeEmail.toLowerCase()));
         if (current) {
-          setActiveUserRole(current.role);
+          setActiveUserRole(prev => prev === current.role ? prev : current.role);
         }
       }
     };
     checkRole();
     window.addEventListener("storage", checkRole);
-    const interval = setInterval(checkRole, 1000);
     return () => {
       window.removeEventListener("storage", checkRole);
-      clearInterval(interval);
     };
   }, [users]);
 
   // CALCULATION LOGIC FOR FINTECH KPIs
   const totalIncome = transactions
     .filter((t) => t.type === "INCOME")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + (parseFloat(String(t.baseAmount ?? t.amount ?? t.originalAmount ?? 0)) || 0), 0);
 
   const totalExpense = transactions
     .filter((t) => t.type === "EXPENSE")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + (parseFloat(String(t.baseAmount ?? t.amount ?? t.originalAmount ?? 0)) || 0), 0);
 
   const netCashflow = totalIncome - totalExpense;
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0;
 
   // Net Worth = sum of assets (investments current value)
-  const netWorth = investments.reduce((sum, inv) => sum + Number(inv.currentValue), 0);
+  const netWorth = investments.reduce((sum, inv) => sum + (parseFloat(String(inv.currentValue || 0)) || 0), 0);
 
   // Debt-to-Income: e.g. housing mortgage ($2200) / total income
   const housingExpense = transactions
     .filter((t) => t.category === "Vivienda" || t.category === "Servicios" || t.category === "Housing" || t.category === "Utilities")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + (parseFloat(String(t.baseAmount ?? t.amount ?? t.originalAmount ?? 0)) || 0), 0);
   const debtToIncome = totalIncome > 0 ? (housingExpense / totalIncome) * 100 : 0;
 
   // Unpaid bills summary
   const unpaidBills = calendarEvents.filter((ev) => ev.status === "UNPAID" || ev.status === "OVERDUE");
-  const upcomingBillsTotal = unpaidBills.reduce((sum, b) => sum + Number(b.amount || 0), 0);
+  const upcomingBillsTotal = unpaidBills.reduce((sum, b) => sum + (parseFloat(String(b.amount || 0)) || 0), 0);
 
   // Asset allocations
   const assetTypeTotals = investments.reduce((acc, inv) => {
-    acc[inv.assetType] = (acc[inv.assetType] || 0) + Number(inv.currentValue);
+    const val = parseFloat(String(inv.currentValue || 0)) || 0;
+    acc[inv.assetType] = (acc[inv.assetType] || 0) + val;
     return acc;
   }, {} as Record<string, number>);
 

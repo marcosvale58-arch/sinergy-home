@@ -20,11 +20,12 @@ import {
 import { useStore, InventoryItem } from "@/lib/mock-data";
 
 export default function InventoryPage() {
-  const { inventory, household, updateInventoryStock, addInventoryItem } = useStore();
+  const { inventory, household, updateInventoryStock, addInventoryItem, deleteInventoryItem } = useStore();
   
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("Todos");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
 
   // Form
   const [formData, setFormData] = useState({
@@ -58,6 +59,13 @@ export default function InventoryPage() {
     );
     setIsModalOpen(false);
     setFormData({ name: "", category: "Despensa", minQuantity: "1", unit: "unidades" });
+  };
+
+  const handleDelete = () => {
+    if (itemToDelete) {
+      deleteInventoryItem(itemToDelete.id);
+      setItemToDelete(null);
+    }
   };
 
   return (
@@ -106,13 +114,22 @@ export default function InventoryPage() {
                   <span className="text-xs font-bold text-slate-900 dark:text-white block">{item.name}</span>
                   <span className="text-[10px] text-rose-500 font-bold uppercase">{"STOCK"}: {item.currentQuantity} {item.unit}</span>
                 </div>
-                <button 
-                  onClick={() => updateInventoryStock(item.id, 1)}
-                  className="p-1.5 bg-rose-50 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100 transition"
-                  title="Aumentar"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => updateInventoryStock(item.id, 1)}
+                    className="p-1.5 bg-rose-50 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100 transition"
+                    title="Aumentar"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => setItemToDelete(item)}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-100/50 dark:hover:bg-rose-900/40 rounded-lg transition"
+                    title="Eliminar suministro"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
             {lowStockItems.length === 0 && (
@@ -168,40 +185,51 @@ export default function InventoryPage() {
             {filteredItems.map(item => {
               const isLow = Number(item.currentQuantity) <= Number(item.minQuantity);
               return (
-                <div key={item.id} className={`bg-white dark:bg-zinc-900 border ${isLow ? "border-rose-200 dark:border-rose-900/40 ring-1 ring-rose-50 dark:ring-rose-900/10" : "border-slate-200 dark:border-zinc-800"} p-5 rounded-2xl shadow-sm hover:shadow-md transition group`}>
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400">
-                      <Layers className="w-5 h-5" />
+                <div key={item.id} className={`bg-white dark:bg-zinc-900 border ${isLow ? "border-rose-200 dark:border-rose-900/40 ring-1 ring-rose-50 dark:ring-rose-900/10" : "border-slate-200 dark:border-zinc-800"} p-5 rounded-2xl shadow-sm hover:shadow-md transition group flex flex-col justify-between`}>
+                  <div>
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400">
+                        <Layers className="w-5 h-5" />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <span className={`text-xl font-black ${isLow ? "text-rose-600" : "text-slate-900 dark:text-white"}`}>
+                            {item.currentQuantity}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">{item.unit}</span>
+                        </div>
+                        <button 
+                          onClick={() => setItemToDelete(item)}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition"
+                          title="Eliminar suministro"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className={`text-xl font-black ${isLow ? "text-rose-600" : "text-slate-900 dark:text-white"}`}>
-                        {item.currentQuantity}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">{item.unit}</span>
+
+                    <h5 className="font-bold text-slate-900 dark:text-white mb-1">{item.name}</h5>
+                    <div className="flex items-center gap-2 mb-6">
+                      <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{item.category}</span>
+                      <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-zinc-700" />
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">MIN: {item.minQuantity} {item.unit}</span>
                     </div>
                   </div>
 
-                  <h5 className="font-bold text-slate-900 dark:text-white mb-1">{item.name}</h5>
-                  <div className="flex items-center gap-2 mb-6">
-                    <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{item.category}</span>
-                    <span className="w-1 h-1 rounded-full bg-slate-300" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">MIN: {item.minQuantity} {item.unit}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800/60">
                     <button 
                       onClick={() => updateInventoryStock(item.id, -1)}
-                      className="flex-1 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 hover:bg-rose-50 hover:text-rose-600 transition flex items-center justify-center"
+                      className="flex-1 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 transition flex items-center justify-center gap-1 text-xs font-semibold"
                       title="Disminuir"
                     >
-                      <ArrowDown className="w-4 h-4" />
+                      <ArrowDown className="w-4 h-4" /> -1
                     </button>
                     <button 
                       onClick={() => updateInventoryStock(item.id, 1)}
-                      className="flex-1 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 hover:bg-emerald-50 hover:text-emerald-600 transition flex items-center justify-center"
+                      className="flex-1 py-2 rounded-xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/30 transition flex items-center justify-center gap-1 text-xs font-semibold"
                       title="Aumentar"
                     >
-                      <ArrowUp className="w-4 h-4" />
+                      <ArrowUp className="w-4 h-4" /> +1
                     </button>
                   </div>
                 </div>
@@ -295,6 +323,42 @@ export default function InventoryPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {itemToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mb-4">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            
+            <h3 className="text-xl font-bold text-slate-950 dark:text-white mb-2">
+              {"¿Eliminar suministro?"}
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-zinc-400 mb-6">
+              {"¿Estás seguro de que deseas eliminar"} <strong className="text-slate-800 dark:text-zinc-200 font-semibold">{itemToDelete.name}</strong> {"del inventario? Esta acción no se puede deshacer."}
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 py-3 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-sm text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition"
+              >
+                {"Cancelar"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold text-sm hover:bg-rose-500 shadow-lg shadow-rose-600/20 transition-all flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                {"Eliminar"}
+              </button>
+            </div>
           </div>
         </div>
       )}
