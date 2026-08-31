@@ -5,7 +5,7 @@ import { convertToBase } from "@/lib/currency";
 import { getHouseholdFullState, getHouseholdFullStateForUser } from "@/actions/dashboard";
 import { createTransaction as serverCreateTransaction, deleteTransaction as serverDeleteTransaction } from "@/actions/transactions";
 import { updateDistributionRule as serverUpdateRule } from "@/actions/distribution";
-import { createInvestment as serverCreateInvestment, updateInvestmentValue as serverUpdateInvestmentValue } from "@/actions/investments";
+import { createInvestment as serverCreateInvestment, updateInvestmentValue as serverUpdateInvestmentValue, deleteInvestment as serverDeleteInvestment } from "@/actions/investments";
 import { createInventoryItem as serverCreateInventoryItem, updateInventoryStock as serverUpdateInventoryStock, deleteInventoryItem as serverDeleteInventoryItem } from "@/actions/inventory";
 import { createGoal as serverCreateGoal, contributeToGoal as serverContributeToGoal } from "@/actions/goals";
 import { createCalendarEvent as serverCreateCalendarEvent, payCalendarBill as serverPayBill } from "@/actions/calendar";
@@ -60,10 +60,11 @@ export interface Investment {
   id: string;
   householdId: string;
   assetName: string;
-  assetType: "Stocks" | "Real Estate" | "Crypto" | "Fixed Income" | "Cash";
+  assetType: "Merchandise" | "Stocks" | "Real Estate" | "Crypto" | "Fixed Income" | "Cash" | "Other";
   investedAmount: number;
   currentValue: number;
   expectedAnnualReturn: number;
+  notes?: string;
   updatedAt: string;
 }
 
@@ -154,10 +155,11 @@ const INITIAL_RULES: DistributionRule[] = [
 ];
 
 const INITIAL_INVESTMENTS: Investment[] = [
-  { id: "inv-1", householdId: "hh-1", assetName: "Vanguard S&P 500 ETF (VOO)", assetType: "Stocks", investedAmount: 45000, currentValue: 52400, expectedAnnualReturn: 9.5, updatedAt: "2026-08-15T00:00:00.000Z" },
-  { id: "inv-2", householdId: "hh-1", assetName: "Apartamento en Alquiler Miami", assetType: "Real Estate", investedAmount: 30000, currentValue: 34500, expectedAnnualReturn: 7.2, updatedAt: "2026-08-15T00:00:00.000Z" },
-  { id: "inv-3", householdId: "hh-1", assetName: "Billetera Bitcoin (BTC)", assetType: "Crypto", investedAmount: 15000, currentValue: 21200, expectedAnnualReturn: 18.0, updatedAt: "2026-08-15T00:00:00.000Z" },
-  { id: "inv-4", householdId: "hh-1", assetName: "Cuenta de Alto Rendimiento (HYSA)", assetType: "Cash", investedAmount: 12000, currentValue: 12150, expectedAnnualReturn: 4.5, updatedAt: "2026-08-15T00:00:00.000Z" },
+  { id: "inv-1", householdId: "hh-1", assetName: "Lote de Mercancía Ropa Deportiva", assetType: "Merchandise", investedAmount: 18000, currentValue: 18000, expectedAnnualReturn: 0, notes: "Proveedor textil, temporada de fin de año", updatedAt: "2026-08-15T00:00:00.000Z" },
+  { id: "inv-2", householdId: "hh-1", assetName: "Vanguard S&P 500 ETF (VOO)", assetType: "Stocks", investedAmount: 45000, currentValue: 52400, expectedAnnualReturn: 9.5, notes: "Fondo indexado bursátil", updatedAt: "2026-08-15T00:00:00.000Z" },
+  { id: "inv-3", householdId: "hh-1", assetName: "Apartamento en Alquiler Miami", assetType: "Real Estate", investedAmount: 30000, currentValue: 34500, expectedAnnualReturn: 7.2, notes: "Inmueble con contrato activo", updatedAt: "2026-08-15T00:00:00.000Z" },
+  { id: "inv-4", householdId: "hh-1", assetName: "Billetera Bitcoin (BTC)", assetType: "Crypto", investedAmount: 15000, currentValue: 21200, expectedAnnualReturn: 18.0, notes: "Reserva digital en billetera fría", updatedAt: "2026-08-15T00:00:00.000Z" },
+  { id: "inv-5", householdId: "hh-1", assetName: "Cuenta de Alto Rendimiento (HYSA)", assetType: "Cash", investedAmount: 12000, currentValue: 12150, expectedAnnualReturn: 4.5, notes: "Fondo de emergencia remunerado", updatedAt: "2026-08-15T00:00:00.000Z" },
 ];
 
 const INITIAL_INVENTORY: InventoryItem[] = [
@@ -232,7 +234,7 @@ class StorageEngine {
             id: data.household.id,
             name: data.household.name,
             baseCurrency: data.household.baseCurrency,
-            createdAt: typeof data.household.createdAt === 'object' ? data.household.createdAt.toISOString() : String(data.household.createdAt),
+            createdAt: String(data.household.createdAt),
           };
         }
         if (data.users && Array.isArray(data.users)) {
@@ -472,17 +474,21 @@ export function useStore() {
       assetName: string,
       assetType: Investment["assetType"],
       invested: number,
-      current: number,
-      returnRate: number
+      notes?: string,
+      current?: number,
+      returnRate?: number
     ) => {
+      const currentVal = current !== undefined ? current : invested;
+      const rate = returnRate !== undefined ? returnRate : 0;
       const newInv: Investment = {
         id: `inv-${Date.now()}`,
         householdId: dbStore.household.id,
         assetName,
         assetType,
         investedAmount: invested,
-        currentValue: current,
-        expectedAnnualReturn: returnRate,
+        currentValue: currentVal,
+        expectedAnnualReturn: rate,
+        notes: notes || "",
         updatedAt: new Date().toISOString(),
       };
       dbStore.investments = [newInv, ...dbStore.investments];
@@ -493,9 +499,16 @@ export function useStore() {
         assetName,
         assetType,
         investedAmount: invested,
-        currentValue: current,
-        expectedAnnualReturn: returnRate,
+        currentValue: currentVal,
+        expectedAnnualReturn: rate,
+        notes,
       });
+    },
+
+    deleteInvestment: async (id: string) => {
+      dbStore.investments = dbStore.investments.filter((inv) => inv.id !== id);
+      triggerUpdate();
+      await serverDeleteInvestment(id);
     },
 
     updateInvestmentValue: async (id: string, newValue: number) => {

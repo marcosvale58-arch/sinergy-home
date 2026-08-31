@@ -218,10 +218,11 @@ async function seed() {
 
   // 6. Investments
   const investmentsData = [
-    { id: "inv-1", householdId: household.id, assetName: "Vanguard S&P 500 ETF (VOO)", assetType: "Stocks", investedAmount: "45000.00", currentValue: "52400.00", expectedAnnualReturn: "9.50" },
-    { id: "inv-2", householdId: household.id, assetName: "Apartamento en Alquiler Miami", assetType: "Real Estate", investedAmount: "30000.00", currentValue: "34500.00", expectedAnnualReturn: "7.20" },
-    { id: "inv-3", householdId: household.id, assetName: "Billetera Bitcoin (BTC)", assetType: "Crypto", investedAmount: "15000.00", currentValue: "21200.00", expectedAnnualReturn: "18.00" },
-    { id: "inv-4", householdId: household.id, assetName: "Cuenta de Alto Rendimiento (HYSA)", assetType: "Cash", investedAmount: "12000.00", currentValue: "12150.00", expectedAnnualReturn: "4.50" },
+    { id: "inv-1", householdId: household.id, assetName: "Lote de Mercancía Ropa Deportiva", assetType: "Merchandise", investedAmount: "18000.00", currentValue: "18000.00", expectedAnnualReturn: "0.00", notes: "Proveedor textil, temporada de fin de año" },
+    { id: "inv-2", householdId: household.id, assetName: "Vanguard S&P 500 ETF (VOO)", assetType: "Stocks", investedAmount: "45000.00", currentValue: "52400.00", expectedAnnualReturn: "9.50", notes: "Fondo indexado bursátil" },
+    { id: "inv-3", householdId: household.id, assetName: "Apartamento en Alquiler Miami", assetType: "Real Estate", investedAmount: "30000.00", currentValue: "34500.00", expectedAnnualReturn: "7.20", notes: "Inmueble con contrato activo" },
+    { id: "inv-4", householdId: household.id, assetName: "Billetera Bitcoin (BTC)", assetType: "Crypto", investedAmount: "15000.00", currentValue: "21200.00", expectedAnnualReturn: "18.00", notes: "Reserva digital en billetera fría" },
+    { id: "inv-5", householdId: household.id, assetName: "Cuenta de Alto Rendimiento (HYSA)", assetType: "Cash", investedAmount: "12000.00", currentValue: "12150.00", expectedAnnualReturn: "4.50", notes: "Fondo de emergencia remunerado" },
   ];
   await db.insert(schema.investments).values(investmentsData);
   console.log(`✅ ${investmentsData.length} investment holdings created.`);

@@ -89,15 +89,16 @@ export const distributionRules = pgTable("distribution_rules", {
   value: numeric("value", { precision: 12, scale: 2 }).notNull(), // percentage (e.g., 50) or fixed amount
 });
 
-// Module 3: Investment Portfolio & Projections
+// Module 3: Investment Portfolio
 export const investments = pgTable("investments", {
   id: text("id").primaryKey(),
   householdId: text("household_id").notNull().references(() => households.id, { onDelete: "cascade" }),
   assetName: text("asset_name").notNull(),
-  assetType: text("asset_type").notNull(), // Stocks, Real Estate, Crypto, Fixed Income, Cash
+  assetType: text("asset_type").notNull(), // Merchandise, Stocks, Real Estate, Crypto, Fixed Income, Cash, Other
   investedAmount: numeric("invested_amount", { precision: 12, scale: 2 }).notNull(),
-  currentValue: numeric("current_value", { precision: 12, scale: 2 }).notNull(),
-  expectedAnnualReturn: numeric("expected_annual_return", { precision: 5, scale: 2 }).notNull(), // percentage e.g. 8.5
+  currentValue: numeric("current_value", { precision: 12, scale: 2 }).default("0").notNull(),
+  expectedAnnualReturn: numeric("expected_annual_return", { precision: 5, scale: 2 }).default("0").notNull(), // percentage e.g. 0
+  notes: text("notes"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

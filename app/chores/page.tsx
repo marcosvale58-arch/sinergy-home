@@ -29,12 +29,15 @@ import {
   RefreshCw,
   Filter,
   Search,
-  Users
+  Users,
+  FileDown
 } from "lucide-react";
 import { useStore, Chore, User } from "@/lib/mock-data";
+import { generateChoresListPdf } from "@/lib/generate-chores-list-pdf";
 
 export default function ChoresPage() {
   const { 
+    household,
     chores, 
     users, 
     screenTime, 
@@ -111,6 +114,27 @@ export default function ChoresPage() {
   });
 
   const [isRedeemModalOpen, setIsRedeemModalOpen] = useState(false);
+  const [isPdfDownloaded, setIsPdfDownloaded] = useState(false);
+
+  const handleDownloadPdf = () => {
+    const listToExport = filteredChores.length > 0 ? filteredChores : chores;
+    if (listToExport.length === 0) return;
+
+    const selectedMemberName = filterMemberId === "ALL" 
+      ? "Todos los miembros" 
+      : users.find(u => u.id === filterMemberId)?.name || "Todos";
+
+    generateChoresListPdf({
+      householdName: household?.name || "Hogar Principal",
+      chores: listToExport,
+      users,
+      filterMemberName: selectedMemberName,
+      filterStatus,
+    });
+
+    setIsPdfDownloaded(true);
+    setTimeout(() => setIsPdfDownloaded(false), 3000);
+  };
 
   const children = useMemo(() => users.filter(u => u.role === "CHILD"), [users]);
 
@@ -204,9 +228,9 @@ export default function ChoresPage() {
     setIsRulesModalOpen(false);
   };
 
-  const handleRedeem = (points: number) => {
+  const handleRedeem = async (points: number) => {
     if (!activeUser) return;
-    const success = redeemScreenTime(activeUser.id, points);
+    const success = await redeemScreenTime(activeUser.id, points);
     if (success) {
       setIsRedeemModalOpen(false);
     } else {
@@ -232,12 +256,30 @@ export default function ChoresPage() {
         <div className="flex flex-wrap items-center gap-3">
           <button 
             type="button"
+            onClick={handleDownloadPdf}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+            title="Descargar lista de tareas en PDF"
+          >
+            {isPdfDownloaded ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-200" />
+                <span>{"¡PDF Descargado!"}</span>
+              </>
+            ) : (
+              <>
+                <FileDown className="w-4 h-4" />
+                <span>{"Descargar PDF"}</span>
+              </>
+            )}
+          </button>
+          <button 
+            type="button"
             onClick={() => setIsResetConfirmOpen(true)}
-            className="bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all"
+            className="bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
             title="Reiniciar ciclo diario de tareas a pendientes"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>{"Reiniciar Ciclo Diario"}</span>
+            <span>{"Reiniciar Ciclo"}</span>
           </button>
           <button 
             type="button"
@@ -279,19 +321,28 @@ export default function ChoresPage() {
           <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-sm">
             
             {/* Chores Header & Total Count */}
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex items-center justify-between flex-wrap gap-3">
                <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500" /> 
                  {activeUser?.role === "CHILD" ? "Tareas del Hogar" : "Gestor de Tareas del Hogar"}
                </h4>
-               <div className="flex items-center gap-3">
-                 <span className="text-xs font-bold text-slate-400">
+               <div className="flex items-center gap-2">
+                 <span className="text-xs font-bold text-slate-400 mr-1">
                    {filteredChores.length} de {chores.length} {"tareas"}
                  </span>
                  <button
                    type="button"
+                   onClick={handleDownloadPdf}
+                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                   title="Descargar lista en PDF"
+                 >
+                   <FileDown className="w-3.5 h-3.5" />
+                   <span>{"PDF"}</span>
+                 </button>
+                 <button
+                   type="button"
                    onClick={openNewChoreModal}
-                   className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition"
+                   className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition cursor-pointer"
                  >
                    <Plus className="w-3.5 h-3.5" />
                    <span>{"Nueva Tarea"}</span>
