@@ -118,11 +118,13 @@ export default function Dashboard() {
   };
 
   const assetTypeTranslations: Record<string, string> = {
+    Merchandise: "Mercancía",
     Stocks: "Acciones",
     "Real Estate": "Bienes Raíces",
     Crypto: "Criptomonedas",
     Cash: "Efectivo / Ahorro",
     "Fixed Income": "Renta Fija",
+    Other: "Otros",
   };
 
   return (

@@ -15,9 +15,15 @@ import {
   Layers,
   Sparkles,
   RefreshCcw,
-  History
+  History,
+  FileDown,
+  X,
+  Check,
+  CheckSquare,
+  Square
 } from "lucide-react";
 import { useStore, InventoryItem } from "@/lib/mock-data";
+import { generateShoppingListPdf } from "@/lib/generate-shopping-list-pdf";
 
 export default function InventoryPage() {
   const { inventory, household, updateInventoryStock, addInventoryItem, deleteInventoryItem } = useStore();
@@ -26,11 +32,19 @@ export default function InventoryPage() {
   const [activeCategory, setActiveCategory] = useState<string>("Todos");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
+  const [isShoppingListModalOpen, setIsShoppingListModalOpen] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [pdfDownloaded, setPdfDownloaded] = useState(false);
 
   // Form
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    category: InventoryItem["category"];
+    minQuantity: string;
+    unit: string;
+  }>({
     name: "",
-    category: "Despensa" as InventoryItem["category"],
+    category: "Pantry",
     minQuantity: "1",
     unit: "unidades"
   });
@@ -58,7 +72,7 @@ export default function InventoryPage() {
       formData.unit
     );
     setIsModalOpen(false);
-    setFormData({ name: "", category: "Despensa", minQuantity: "1", unit: "unidades" });
+    setFormData({ name: "", category: "Pantry", minQuantity: "1", unit: "unidades" });
   };
 
   const handleDelete = () => {
@@ -68,6 +82,39 @@ export default function InventoryPage() {
     }
   };
 
+  const handleOpenShoppingList = () => {
+    setSelectedItemIds(lowStockItems.map(i => i.id));
+    setPdfDownloaded(false);
+    setIsShoppingListModalOpen(true);
+  };
+
+  const handleToggleSelectItem = (id: string) => {
+    if (selectedItemIds.includes(id)) {
+      setSelectedItemIds(selectedItemIds.filter(itemId => itemId !== id));
+    } else {
+      setSelectedItemIds([...selectedItemIds, id]);
+    }
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedItemIds.length === lowStockItems.length) {
+      setSelectedItemIds([]);
+    } else {
+      setSelectedItemIds(lowStockItems.map(i => i.id));
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    const itemsToExport = lowStockItems.filter(item => selectedItemIds.includes(item.id));
+    if (itemsToExport.length === 0) return;
+    generateShoppingListPdf({
+      householdName: household?.name || "Hogar Principal",
+      items: itemsToExport,
+    });
+    setPdfDownloaded(true);
+    setTimeout(() => setPdfDownloaded(false), 3000);
+  };
+
   return (
     <div className="space-y-8 animate-fade-in pb-16">
       
@@ -75,7 +122,7 @@ export default function InventoryPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <PackageCheck className="w-7 h-7 text-indigo-600" /> {"Inventario y Stock"}
+            <PackageCheck className="w-7 h-7 text-indigo-600" /> {"Inventario"}
           </h2>
           <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">{"Gestiona los niveles de stock del hogar y listas de compras automatizadas."}</p>
         </div>
@@ -141,7 +188,10 @@ export default function InventoryPage() {
           </div>
 
           {lowStockItems.length > 0 && (
-            <button className="w-full mt-4 py-3 bg-rose-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-rose-500 transition shadow-lg shadow-rose-600/10">
+            <button 
+              onClick={handleOpenShoppingList}
+              className="w-full mt-4 py-3 bg-rose-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-rose-500 transition shadow-lg shadow-rose-600/10 cursor-pointer active:scale-[0.99]"
+            >
               <ShoppingCart className="w-4 h-4" /> {"Generar Lista de Compras"}
             </button>
           )}
@@ -210,7 +260,9 @@ export default function InventoryPage() {
 
                     <h5 className="font-bold text-slate-900 dark:text-white mb-1">{item.name}</h5>
                     <div className="flex items-center gap-2 mb-6">
-                      <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{item.category}</span>
+                      <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                        {item.category === "Pantry" ? "Despensa" : item.category === "Cleaning" ? "Limpieza" : item.category === "Toiletries" ? "Higiene" : item.category === "Medicine" ? "Medicina" : item.category}
+                      </span>
                       <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-zinc-700" />
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">MIN: {item.minQuantity} {item.unit}</span>
                     </div>
@@ -273,13 +325,13 @@ export default function InventoryPage() {
                   <label className="block text-xs font-bold text-slate-600 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">{"Categoría"}</label>
                   <select
                     value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value as InventoryItem["category"] })}
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 font-semibold focus:ring-2 focus:ring-indigo-500 outline-none text-slate-900 dark:text-white"
                   >
-                    <option value="Despensa">Despensa</option>
-                    <option value="Limpieza">Limpieza</option>
-                    <option value="Higiene">Higiene</option>
-                    <option value="Medicina">Medicina</option>
+                    <option value="Pantry">Despensa</option>
+                    <option value="Cleaning">Limpieza</option>
+                    <option value="Toiletries">Higiene</option>
+                    <option value="Medicine">Medicina</option>
                   </select>
                 </div>
                 <div>
@@ -359,6 +411,152 @@ export default function InventoryPage() {
                 {"Eliminar"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shopping List Modal */}
+      {isShoppingListModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-xl w-full p-6 sm:p-8 shadow-2xl animate-scale-up max-h-[90vh] flex flex-col">
+            
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-zinc-800">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 rounded-xl">
+                  <ShoppingCart className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-950 dark:text-white flex items-center gap-2">
+                    {"Lista de Compras"}
+                    <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                      {lowStockItems.length} {"CRÍTICOS"}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
+                    {"Artículos que requieren reposición urgente en el hogar."}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsShoppingListModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Subheader / Controls */}
+            <div className="py-3 flex items-center justify-between text-xs text-slate-500 dark:text-zinc-400">
+              <button 
+                onClick={handleToggleSelectAll}
+                className="flex items-center gap-1.5 font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                {selectedItemIds.length === lowStockItems.length ? (
+                  <CheckSquare className="w-4 h-4" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
+                {selectedItemIds.length === lowStockItems.length ? "Deseleccionar todos" : "Seleccionar todos"}
+              </button>
+              <span className="font-semibold">
+                {selectedItemIds.length} de {lowStockItems.length} seleccionados
+              </span>
+            </div>
+
+            {/* Items List */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 my-2">
+              {lowStockItems.map((item) => {
+                const isSelected = selectedItemIds.includes(item.id);
+                const current = Number(item.currentQuantity);
+                const min = Number(item.minQuantity);
+                const deficit = Math.max(1, Math.round((min - current) * 10) / 10);
+
+                const getCategoryText = (cat: string) => {
+                  switch (cat) {
+                    case "Pantry": return "Despensa";
+                    case "Cleaning": return "Limpieza";
+                    case "Toiletries": return "Higiene";
+                    case "Medicine": return "Medicina";
+                    default: return cat;
+                  }
+                };
+
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => handleToggleSelectItem(item.id)}
+                    className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      isSelected 
+                        ? "bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40" 
+                        : "bg-slate-50/60 dark:bg-zinc-800/40 border-slate-200 dark:border-zinc-800 opacity-60"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center text-white transition ${isSelected ? "bg-rose-600" : "border-2 border-slate-300 dark:border-zinc-600 bg-transparent"}`}>
+                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-slate-900 dark:text-white">{item.name}</span>
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-white dark:bg-zinc-800 text-slate-500 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
+                            {getCategoryText(item.category)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-xs">
+                          <span className="text-rose-600 dark:text-rose-400 font-bold">
+                            Stock: {current} {item.unit}
+                          </span>
+                          <span className="text-slate-400">•</span>
+                          <span className="text-slate-500 dark:text-zinc-400 font-medium">
+                            Mínimo: {min} {item.unit}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase block tracking-wider">
+                        Sugerido
+                      </span>
+                      <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">
+                        +{deficit} {item.unit}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-4 border-t border-slate-100 dark:border-zinc-800 flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => setIsShoppingListModalOpen(false)}
+                className="py-3 px-5 border border-slate-200 dark:border-zinc-700 rounded-xl font-bold text-sm text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800 transition"
+              >
+                {"Cerrar"}
+              </button>
+              <button
+                type="button"
+                disabled={selectedItemIds.length === 0}
+                onClick={handleDownloadPdf}
+                className="flex-1 py-3 px-5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 transition-all cursor-pointer"
+              >
+                {pdfDownloaded ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-300" />
+                    {"¡PDF Descargado con Éxito!"}
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="w-4 h-4" />
+                    {`Descargar Lista en PDF (${selectedItemIds.length})`}
+                  </>
+                )}
+              </button>
+            </div>
+
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { 
@@ -64,19 +64,21 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const sessionUser = authSession?.user;
   const isSessionUserInStore = sessionUser && users.some(u => u.email?.toLowerCase() === sessionUser.email?.toLowerCase());
 
-  const displayUsers: User[] = sessionUser && !isSessionUserInStore
-    ? [
-        {
-          id: sessionUser.id,
-          name: sessionUser.name,
-          email: sessionUser.email,
-          role: ((sessionUser as any).role as "ADMIN" | "MEMBER" | "CHILD") || "ADMIN",
-          pointsBalance: 0,
-          householdId: "hh-1",
-        },
-        ...users,
-      ]
-    : users;
+  const displayUsers: User[] = useMemo(() => {
+    return sessionUser && !isSessionUserInStore
+      ? [
+          {
+            id: sessionUser.id,
+            name: sessionUser.name,
+            email: sessionUser.email,
+            role: ((sessionUser as any).role as "ADMIN" | "MEMBER" | "CHILD") || "ADMIN",
+            pointsBalance: 0,
+            householdId: "hh-1",
+          },
+          ...users,
+        ]
+      : users;
+  }, [sessionUser, isSessionUserInStore, users]);
 
   useEffect(() => {
     const handleStorageSync = () => {
@@ -180,8 +182,8 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     { name: "Panel Ejecutivo", href: "/", icon: LayoutDashboard, roles: ["ADMIN", "MEMBER", "CHILD"] },
     { name: "Ingresos y Gastos", href: "/transactions", icon: Receipt, roles: ["ADMIN", "MEMBER"] },
     { name: "Distribución de Ingresos", href: "/distribution", icon: PieChart, roles: ["ADMIN"] },
-    { name: "Portafolio y Proyecciones", href: "/investments", icon: TrendingUp, roles: ["ADMIN"] },
-    { name: "Inventario y Suministros", href: "/inventory", icon: PackageCheck, roles: ["ADMIN", "MEMBER", "CHILD"] },
+    { name: "Portafolio", href: "/investments", icon: TrendingUp, roles: ["ADMIN"] },
+    { name: "Inventario", href: "/inventory", icon: PackageCheck, roles: ["ADMIN", "MEMBER", "CHILD"] },
     { name: "Planificador de Metas", href: "/goals", icon: Target, roles: ["ADMIN", "MEMBER", "CHILD"] },
     { name: "Calendario y Facturas", href: "/calendar", icon: Calendar, roles: ["ADMIN", "MEMBER"] },
     { name: "Tareas y Tiempo de Pantalla", href: "/chores", icon: CheckSquare, roles: ["ADMIN", "MEMBER", "CHILD"] },
@@ -193,18 +195,18 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
   // Route Guarding: redirect if role lacks permission
   useEffect(() => {
-    if (activeUser && activeUser.role === "CHILD") {
+    if (currentRole === "CHILD") {
       const allowedForChild = ["/", "/chores", "/goals", "/inventory"];
       if (!allowedForChild.includes(pathname)) {
         router.push("/chores");
       }
-    } else if (activeUser && activeUser.role === "MEMBER") {
+    } else if (currentRole === "MEMBER") {
       const forbiddenForMember = ["/settings", "/distribution", "/investments"];
       if (forbiddenForMember.includes(pathname)) {
         router.push("/");
       }
     }
-  }, [activeUser?.role, pathname, router]);
+  }, [currentRole, pathname, router]);
 
   // Close mobile drawer on route change
   useEffect(() => {
